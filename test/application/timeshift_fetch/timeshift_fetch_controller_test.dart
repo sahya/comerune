@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:comerune/application/timeshift_fetch/timeshift_fetch_controller.dart';
@@ -349,6 +350,312 @@ void main() {
       expect(controller.status, TimeshiftFetchStatus.idle);
     });
 
+    test('fetchMore restarts the initial fetch when the first fetch failed '
+        'before a session opened (#654)', () async {
+      final FakeTimeshiftClient client = FakeTimeshiftClient(
+        fetchPastResult: FakeFetchResult(error: StateError('no session')),
+      );
+      final TimeshiftFetchController controller = TimeshiftFetchController(
+        client: client,
+        onMessages: (_) {},
+      );
+      await controller.fetchInitial(Uri.parse('https://example.com/view'));
+      expect(controller.status, TimeshiftFetchStatus.error);
+
+      client.fetchPastResult = const FakeFetchResult(hasMore: true);
+      await controller.fetchMore(500);
+
+      expect(client.fetchPastCalls, 2);
+      expect(controller.status, TimeshiftFetchStatus.paused);
+      controller.dispose();
+    });
+
+    test('cancelAndReset waits for the running fetch and returns to idle '
+        '(#654)', () async {
+      final Completer<void> release = Completer<void>();
+      final FakeTimeshiftClient client = FakeTimeshiftClient(
+        fetchPastResult: const FakeFetchResult(hasMore: true),
+        fetchMoreHandler: (_) => release.future,
+      );
+      client.setHasMore(true);
+      final TimeshiftFetchController controller = TimeshiftFetchController(
+        client: client,
+        onMessages: (_) {},
+      );
+      await controller.fetchInitial(Uri.parse('https://example.com/view'));
+      final Future<void> fetching = controller.fetchMore(500);
+      expect(controller.status, TimeshiftFetchStatus.fetching);
+
+      final Future<void> resetting = controller.cancelAndReset();
+      release.complete();
+      await resetting;
+      await fetching;
+
+      expect(controller.status, TimeshiftFetchStatus.idle);
+      expect(client.isSessionOpen, isFalse);
+      expect(client.stopCalls, 1);
+      // A later fetchMore must not restart the previous program's fetch.
+      await controller.fetchMore(500);
+      expect(client.fetchPastCalls, 1);
+      controller.dispose();
+    });
+
+    test('a reset during the fetch-all batch delay is not overwritten when '
+        'the loop wakes up (#654)', () {
+      fakeAsync((FakeAsync async) {
+        final FakeTimeshiftClient client = FakeTimeshiftClient(
+          fetchMoreHandler: (_) async {},
+        );
+        client.setHasMore(true);
+        final TimeshiftFetchController controller = TimeshiftFetchController(
+          client: client,
+          onMessages: (_) {},
+          fetchAllBatchDelay: const Duration(milliseconds: 100),
+        );
+
+        unawaited(controller.fetchAll());
+        async.flushMicrotasks();
+        expect(controller.status, TimeshiftFetchStatus.fetching);
+
+        // The user switches programs while the loop waits between batches.
+        unawaited(controller.cancelAndReset());
+        async.flushMicrotasks();
+        expect(controller.status, TimeshiftFetchStatus.idle);
+
+        async.elapse(const Duration(milliseconds: 200));
+
+        expect(controller.status, TimeshiftFetchStatus.idle);
+        expect(controller.isFetchingAll, isFalse);
+        controller.dispose();
+      });
+    });
+
+    group('reset and dispose while a fetch is running (#654)', () {
+      late Completer<void> release;
+      late int fetchMoreCalls;
+      late FakeTimeshiftClient client;
+      late TimeshiftFetchController controller;
+
+      setUp(() async {
+        release = Completer<void>();
+        fetchMoreCalls = 0;
+        client = FakeTimeshiftClient(
+          fetchPastResult: const FakeFetchResult(hasMore: true),
+          fetchMoreHandler: (_) async {
+            fetchMoreCalls += 1;
+            await release.future;
+          },
+        );
+        controller = TimeshiftFetchController(
+          client: client,
+          onMessages: (_) {},
+          fetchAllBatchDelay: Duration.zero,
+        );
+        await controller.fetchInitial(Uri.parse('https://example.com/view'));
+        client.setHasMore(true);
+      });
+
+      test(
+        'a fetch that fails after a reset does not set the error state',
+        () async {
+          final Completer<void> failing = Completer<void>();
+          client.fetchMoreHandler = (_) => failing.future;
+          final Future<void> fetching = controller.fetchMore(500);
+
+          final Future<void> resetting = controller.cancelAndReset();
+          failing.completeError(StateError('network'));
+          await resetting;
+          await fetching;
+
+          expect(controller.status, TimeshiftFetchStatus.idle);
+          expect(controller.lastError, isNull);
+          controller.dispose();
+        },
+      );
+
+      test(
+        'a reset during a fetch-all batch leaves the controller idle',
+        () async {
+          final Future<void> fetchingAll = controller.fetchAll();
+          expect(controller.isFetchingAll, isTrue);
+
+          final Future<void> resetting = controller.cancelAndReset();
+          release.complete();
+          await resetting;
+          await fetchingAll;
+
+          expect(controller.status, TimeshiftFetchStatus.idle);
+          expect(controller.isFetchingAll, isFalse);
+          controller.dispose();
+        },
+      );
+
+      test(
+        'fetch requests made while a reset is waiting are ignored',
+        () async {
+          final Future<void> fetching = controller.fetchMore(500);
+          expect(fetchMoreCalls, 1);
+
+          final Future<void> resetting = controller.cancelAndReset();
+          // The user presses a fetch button while the reset waits.
+          await controller.fetchMore(500);
+          await controller.fetchAll();
+          release.complete();
+          await resetting;
+          await fetching;
+
+          expect(fetchMoreCalls, 1);
+          expect(controller.status, TimeshiftFetchStatus.idle);
+          controller.dispose();
+        },
+      );
+
+      test('a refused session reset still returns to idle, and the next '
+          'initial fetch resets the session before reading', () async {
+        client.resetSessionError = StateError('client refused');
+
+        expect(controller.reset, throwsA(isA<StateError>()));
+        expect(controller.status, TimeshiftFetchStatus.idle);
+        expect(client.isSessionOpen, isTrue);
+
+        await controller.fetchInitial(Uri.parse('https://example.com/next'));
+
+        // The retried reset ran before the new session was opened.
+        expect(client.resetSessionCalls, 2);
+        expect(client.fetchPastCalls, 2);
+        expect(controller.status, TimeshiftFetchStatus.paused);
+        controller.dispose();
+      });
+
+      test('the next initial fetch stops with an error when the session '
+          'still cannot be reset', () async {
+        client.resetSessionError = StateError('client refused');
+        expect(controller.reset, throwsA(isA<StateError>()));
+        client.resetSessionError = StateError('still refused');
+
+        await controller.fetchInitial(Uri.parse('https://example.com/next'));
+
+        expect(client.fetchPastCalls, 1);
+        expect(controller.status, TimeshiftFetchStatus.error);
+        controller.dispose();
+      });
+
+      test('overlapping resets keep refusing fetches until the last one '
+          'finishes', () async {
+        // The second reset is held in stop() so it deterministically
+        // finishes after the first one.
+        final Completer<void> secondStop = Completer<void>();
+        int stops = 0;
+        client.stopHandler = () async {
+          stops += 1;
+          if (stops == 2) {
+            await secondStop.future;
+          }
+        };
+        final Future<void> firstReset = controller.cancelAndReset();
+        final Future<void> secondReset = controller.cancelAndReset();
+        await firstReset;
+
+        // Only the first reset is done: fetches are still refused.
+        await controller.fetchMore(500);
+        await controller.fetchInitial(Uri.parse('https://example.com/x'));
+        expect(fetchMoreCalls, 0);
+        expect(client.fetchPastCalls, 1);
+
+        secondStop.complete();
+        await secondReset;
+
+        // After both resets, fetches are accepted again.
+        await controller.fetchInitial(Uri.parse('https://example.com/next'));
+        expect(client.fetchPastCalls, 2);
+        controller.dispose();
+      });
+
+      test('the retry after a failed session reset retries the reset instead '
+          'of continuing the previous session', () async {
+        client.resetSessionError = StateError('client refused');
+        expect(controller.reset, throwsA(isA<StateError>()));
+        client.resetSessionError = StateError('still refused');
+        await controller.fetchInitial(Uri.parse('https://example.com/next'));
+        expect(controller.status, TimeshiftFetchStatus.error);
+        final int resetsBefore = client.resetSessionCalls;
+
+        // The panel's retry button calls fetchMore; fetch-all goes the same
+        // way. While the session still cannot be reset, neither may read
+        // the previous program's session.
+        client.resetSessionError = StateError('still refused');
+        await controller.fetchMore(500);
+        client.resetSessionError = StateError('still refused');
+        await controller.fetchAll();
+
+        expect(fetchMoreCalls, 0);
+        expect(client.fetchPastCalls, 1);
+        expect(client.resetSessionCalls, resetsBefore + 2);
+        expect(controller.status, TimeshiftFetchStatus.error);
+
+        // Once the reset goes through, the retry starts the new program.
+        await controller.fetchMore(500);
+        expect(client.resetSessionCalls, resetsBefore + 3);
+        expect(client.fetchPastCalls, 2);
+        expect(controller.status, TimeshiftFetchStatus.paused);
+        expect(controller.lastError, isNull);
+        controller.dispose();
+      });
+
+      test(
+        'a fetch finishing after dispose does not touch the state',
+        () async {
+          final Future<void> fetching = controller.fetchMore(500);
+          controller.dispose();
+
+          release.complete();
+          await fetching;
+
+          // Reaching here without a "used after being disposed" error is the
+          // assertion; the status stays as it was at dispose.
+          expect(controller.status, TimeshiftFetchStatus.fetching);
+        },
+      );
+    });
+
+    test('an old fetch-all loop does not clear the flags of a fetch-all '
+        'started after a reset (#654)', () {
+      fakeAsync((FakeAsync async) {
+        final FakeTimeshiftClient client = FakeTimeshiftClient(
+          fetchMoreHandler: (_) async {},
+        );
+        client.setHasMore(true);
+        final TimeshiftFetchController controller = TimeshiftFetchController(
+          client: client,
+          onMessages: (_) {},
+          fetchAllBatchDelay: const Duration(milliseconds: 100),
+        );
+
+        // The first loop waits between batches when the reset happens.
+        unawaited(controller.fetchAll());
+        async.flushMicrotasks();
+        unawaited(controller.cancelAndReset());
+        async.flushMicrotasks();
+
+        // A new fetch-all starts for the next program and is still running
+        // when the old loop wakes up.
+        final Completer<void> release = Completer<void>();
+        client.fetchMoreHandler = (_) => release.future;
+        client.setHasMore(true);
+        unawaited(controller.fetchAll());
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 200));
+
+        expect(controller.isFetchingAll, isTrue);
+        expect(controller.status, TimeshiftFetchStatus.fetching);
+
+        release.complete();
+        client.setHasMore(false);
+        async.elapse(const Duration(milliseconds: 200));
+        controller.dispose();
+      });
+    });
+
     test('notifies listeners on status change', () async {
       final FakeTimeshiftClient client = FakeTimeshiftClient(
         fetchPastResult: FakeFetchResult(hasMore: false, totalFetched: 10),
@@ -395,6 +702,11 @@ class FakeTimeshiftClient implements NdgrTimeshiftClient {
   Future<void> Function(int count)? fetchMoreHandler;
   List<AppMessage> progressMessages;
 
+  int fetchPastCalls = 0;
+  int resetSessionCalls = 0;
+
+  /// When set, the next resetSession() call throws this and clears it.
+  Object? resetSessionError;
   bool _hasMore = false;
   int _totalFetched = 0;
   bool _isSessionOpen = false;
@@ -425,13 +737,18 @@ class FakeTimeshiftClient implements NdgrTimeshiftClient {
     Uri viewApiUri, {
     int maxMessages = NdgrTimeshiftClient.defaultInitialLimit,
   }) async {
+    // Same constraint as NdgrTimeshiftClient.fetchPastComments.
+    if (_isRunning) {
+      throw StateError('NdgrTimeshiftClient is already running');
+    }
     _isRunning = true;
-    _isSessionOpen = true;
+    fetchPastCalls += 1;
 
     if (fetchPastResult.error != null) {
       _isRunning = false;
       throw fetchPastResult.error!;
     }
+    _isSessionOpen = true;
 
     if (progressMessages.isNotEmpty) {
       _eventsController.add(
@@ -452,8 +769,11 @@ class FakeTimeshiftClient implements NdgrTimeshiftClient {
     _isRunning = true;
 
     if (fetchMoreHandler != null) {
-      await fetchMoreHandler!(count);
-      _isRunning = false;
+      try {
+        await fetchMoreHandler!(count);
+      } finally {
+        _isRunning = false;
+      }
       return;
     }
 
@@ -468,13 +788,31 @@ class FakeTimeshiftClient implements NdgrTimeshiftClient {
     _isRunning = false;
   }
 
+  /// When set, stop() waits for the future this returns.
+  Future<void> Function()? stopHandler;
+
   @override
   Future<void> stop() async {
-    _isRunning = false;
+    // Like NdgrTimeshiftClient, stopping aborts the request but the running
+    // fetch only clears `isRunning` when it returns.
+    stopCalls += 1;
+    await stopHandler?.call();
   }
+
+  int stopCalls = 0;
 
   @override
   void resetSession() {
+    resetSessionCalls += 1;
+    // Same constraint as NdgrTimeshiftClient.resetSession.
+    if (_isRunning) {
+      throw StateError('Cannot reset session while a fetch is in progress.');
+    }
+    final Object? error = resetSessionError;
+    if (error != null) {
+      resetSessionError = null;
+      throw error;
+    }
     _isSessionOpen = false;
     _hasMore = false;
     _totalFetched = 0;

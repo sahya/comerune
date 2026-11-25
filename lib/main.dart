@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
 import 'dart:ui';
@@ -40,6 +39,8 @@ import 'data/comment/live_comment_repository.dart';
 import 'data/comment_log/broadcast_history_store.dart';
 import 'data/comment_log/comment_log_writer.dart';
 import 'data/connection/program_info_resolver.dart';
+import 'data/connection/timeshift_view_uri_resolver.dart';
+import 'data/connection/watch_page_web_socket_url_resolver.dart';
 import 'data/broadcaster/broadcaster_name_store.dart';
 import 'data/filter/broadcaster_ng_store.dart';
 import 'data/broadcast/broadcast_control_repository.dart';
@@ -53,6 +54,7 @@ import 'data/user/user_attribute_store.dart';
 import 'data/user/user_attribute_store_migrator.dart';
 import 'data/user/user_name_resolver.dart';
 import 'application/timeshift_fetch/timeshift_fetch_controller.dart';
+import 'application/timeshift_fetch/timeshift_fetch_starter.dart';
 import 'domain/connection/connection_clients.dart' as reconnect;
 import 'domain/connection/connection_supervisor.dart';
 import 'domain/connection/legacy_comment_client.dart' as legacy_impl;
@@ -74,23 +76,15 @@ import 'extension/extension_scope.dart';
 
 /// Feature flag: タイムシフト（過去放送）コメント取得の有効化。
 ///
-/// Issue #639 / #654 / #173 のフォローアップ。`programinfo` レスポンスから
-/// 真の `viewUri` を取得する経路が未確立のため、`fetchInitial` を呼ぶと
-/// 内部で 4xx / 5xx を踏んで生ログエラーへ落ちる。暫定対応として本フラグを
-/// `false` に固定し、検出時はユーザ向けに「未対応」ダイアログを 1 度だけ
-/// 提示する no-op に差し替える。
+/// Issue #654: 終了放送では programinfo が `rooms=[]` を返して viewUri が
+/// 取れないため、[TimeshiftViewUriResolver]（視聴ページ → 視聴 WebSocket の
+/// `messageServer`）で viewUri を取得してから `fetchInitial` を呼ぶ。
+/// 取得できないときは理由別の案内ダイアログを出す。
 ///
-/// 取得経路の調査・実装が完了したら本フラグを `true` に戻し、
-/// `_tryStartTimeshiftInitial` の no-op 分岐を削除して
-/// `fetchInitial(viewApiUri)` を再配線する。
-///
-/// ただし `viewApiUri == null`（終了放送で programinfo が `rooms=[]` を
-/// 返す、Issue #654）の分岐は取得を開始できないため、viewUri を別経路で
-/// 補完できるようになるまではユーザ向けの案内を残すこと（無言の no-op に
-/// しない）。`AppStrings.timeshift.unsupported*` と関連テストは、その案内が
-/// 不要になった時点で除去対象になる（文言が viewUri なしのケースに合うかも
-/// フラグを戻す PR で見直す）。
-const bool kTimeshiftFetchEnabled = false;
+/// 緊急停止用のスイッチとして残している。`false` に戻すと取得を行わず、
+/// 検出時に「未対応」ダイアログ（`AppStrings.timeshift.unsupported*`）を
+/// lv ごとに 1 度だけ提示する従来の挙動に戻る。
+const bool kTimeshiftFetchEnabled = true;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -400,9 +394,9 @@ class _ComeruneAppState extends State<ComeruneApp> {
   String _currentLv = '';
   // Issue #639 / #654: 同一 lv で再接続が走るたびに「未対応」ダイアログを
   // 重ねて出さないよう、最後に提示した lv を記録する。
-  // 「未対応」ダイアログが不要になった時点（`kTimeshiftFetchEnabled` の doc の
-  // 除去条件を参照）で本フィールドも併せて削除する。
-  String? _lastTimeshiftUnsupportedDialogLv;
+  // 「未対応」ダイアログと Issue #654 の「取得できません」ダイアログの
+  // 両方で共有する。
+  String? _lastTimeshiftDialogLv;
   // initState で initialSettings.pastCommentFetchCount.historyCount に
   // 上書きされるため値そのものは一時的なもの。AppSettings.defaults と
   // 整合を取るため 500 を初期値としている。
@@ -445,6 +439,13 @@ class _ComeruneAppState extends State<ComeruneApp> {
   late final CommentPostController _commentPostController;
   late final NdgrTimeshiftClient _timeshiftClient;
   late final TimeshiftFetchController _timeshiftFetchController;
+  final WatchPageWebSocketUrlResolver _watchPageWebSocketUrlResolver =
+      WatchPageWebSocketUrlResolver();
+  late final TimeshiftViewUriResolver _timeshiftViewUriResolver =
+      TimeshiftViewUriResolver(
+        watchPageResolver: _watchPageWebSocketUrlResolver,
+      );
+  late final TimeshiftFetchStarter _timeshiftFetchStarter;
   ForegroundServiceController? _foregroundServiceController;
 
   // Captured on first access (Dart `late final` semantics) so a
@@ -565,6 +566,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
       lvProvider: () => _currentLv,
       userSessionProvider: () => widget.userSessionStore.load(),
       programInfoResolver: ProgramInfoResolver(),
+      watchPageWebSocketUrlResolver: _watchPageWebSocketUrlResolver,
       onProgramTitleResolved: (String title) {
         _programTitleNotifier.value = title;
       },
@@ -593,13 +595,13 @@ class _ComeruneAppState extends State<ComeruneApp> {
       onVposBaseAtResolved: (DateTime vposBaseAt) {
         _vposBaseAtNotifier.value = vposBaseAt;
       },
-      // Issue #639 cause 4: programinfo が「ended」を返した放送
-      // （タイムシフト）では、過去コメントを NDGR HTTP 経由で
-      // 取得するよう TimeshiftFetchController に viewApiUri を
-      // 渡して初回取得を開始する。同じ URL で二重起動を避けるため
-      // 既に実行中/完了している場合はスキップする。
+      // Issue #639 cause 4 / #654: programinfo が「ended」を返した放送
+      // （タイムシフト）では、過去コメントを NDGR HTTP 経由で取得する。
+      // viewApiUri が null なら視聴 WebSocket から取得し直してから始める。
+      // 取得を始めるかどうかの判断（二重起動の防止を含む）は
+      // TimeshiftFetchStarter が行う。
       onTimeshiftDetected: (Uri? viewApiUri) {
-        unawaited(_tryStartTimeshiftInitial(viewApiUri));
+        unawaited(_timeshiftFetchStarter.onTimeshiftDetected(viewApiUri));
       },
     );
     _ndgrClient = _NdgrClientAdapter(
@@ -622,7 +624,30 @@ class _ComeruneAppState extends State<ComeruneApp> {
     _timeshiftFetchController = TimeshiftFetchController(
       client: _timeshiftClient,
       onMessages: (List<AppMessage> messages) {
-        _timelineStore.addAll(messages);
+        // Drop messages of a program the user has already left.
+        if (_timeshiftFetchStarter.acceptsMessages) {
+          _timelineStore.addAll(messages);
+        }
+      },
+    );
+    _timeshiftFetchStarter = TimeshiftFetchStarter(
+      enabled: kTimeshiftFetchEnabled,
+      currentLv: () => _currentLv,
+      // Issue #1017: a broadcast watched live that ended while reconnecting.
+      hasStreamedLive: () =>
+          _connectionSupervisor.hasStreamedSinceConnectionStart,
+      status: () => _timeshiftFetchController.status,
+      fetchInitial: _timeshiftFetchController.fetchInitial,
+      cancelAndReset: _timeshiftFetchController.cancelAndReset,
+      lookUpViewUri: (String lv) async => _timeshiftViewUriResolver.resolve(
+        lv: lv,
+        userSession: await widget.userSessionStore.load(),
+      ),
+      onUnsupported: _showTimeshiftUnsupportedDialogIfNeeded,
+      onUnavailable: (TimeshiftViewUriFailure? failure) {
+        if (mounted) {
+          _showTimeshiftUnavailableDialogIfNeeded(failure);
+        }
       },
     );
 
@@ -669,89 +694,71 @@ class _ComeruneAppState extends State<ComeruneApp> {
     unawaited(widget.oauthAuthController.attach());
   }
 
-  /// Called when [_SessionWsClientAdapter] detects a timeshift (ended)
-  /// broadcast from the programinfo response. Routes past-comment
-  /// retrieval to [TimeshiftFetchController.fetchInitial] so the user
-  /// does not have to trigger it manually (Issue #639 cause 4).
-  ///
-  /// Idempotent: if the controller is already fetching (or has progressed
-  /// past idle in this session) the call is skipped. This prevents double
-  /// initial-fetches when session resolution happens more than once
-  /// (e.g. reconnect attempts) while the previous fetch is still running
-  /// or already collected past comments.
-  ///
-  /// Issue #639 / #654 暫定対応: [kTimeshiftFetchEnabled] が `false` の間は
-  /// `fetchInitial` を呼ばず、ユーザに「未対応（将来対応予定）」ダイアログを
-  /// 1 度だけ提示する no-op として動作する。`viewApiUri` は将来の再有効化を
-  /// 見越して引数として残してあり、フラグを true に戻すだけで本来の経路に
-  /// 復帰できる。生ログエラーへの誤遷移防止が主目的のため、ダイアログ表示が
-  /// 失敗してもアプリの他機能は影響を受けないよう副作用は最小に留める。
-  ///
-  /// Issue #654: 終了放送では programinfo が `rooms=[]` を返し、
-  /// [viewApiUri] が `null` になる。この場合は取得を開始できないので、
-  /// フラグが有効でも取得はせず、無言で終わらないよう「未対応」ダイアログを
-  /// 出す。
-  Future<void> _tryStartTimeshiftInitial(Uri? viewApiUri) async {
-    if (!kTimeshiftFetchEnabled) {
-      _showTimeshiftUnsupportedDialogIfNeeded();
-      return;
-    }
-    if (viewApiUri == null) {
-      log('Timeshift detected without a view URI; skip fetch', name: 'App');
-      _showTimeshiftUnsupportedDialogIfNeeded();
-      return;
-    }
-    if (_timeshiftFetchController.status != TimeshiftFetchStatus.idle) {
-      return;
-    }
-    try {
-      await _timeshiftFetchController.fetchInitial(viewApiUri);
-    } on Object catch (error, stackTrace) {
-      log(
-        'Timeshift initial fetch failed',
-        name: 'App',
-        error: error,
-        stackTrace: stackTrace,
-      );
-    }
-  }
-
   /// 「タイムシフト未対応」ダイアログを同一 lv あたり 1 度だけ提示する。
   ///
-  /// Issue #639 / #654 / #173 暫定対応。本来の取得経路が確立したら
-  /// 呼び出し元の no-op 分岐ごと削除する（`viewApiUri == null` 分岐からの
-  /// 呼び出しは、viewUri を別経路で補完できるようになってから削除する）。
+  /// [kTimeshiftFetchEnabled] を `false`（緊急停止）にしたときだけ使う。
   /// Navigator が未マウント等でダイアログを出せない場合は副作用なく
   /// 抜ける（`AGENTS.md` の
   /// 「Optional Reference Two-Stage Fallback」方針に準じ、内部構造を
   /// 露出しないログだけ残す）。
   void _showTimeshiftUnsupportedDialogIfNeeded() {
+    _showTimeshiftDialogIfNeeded(
+      dialogKey: const Key('timeshift-unsupported-dialog'),
+      confirmKey: const Key('timeshift-unsupported-dialog-confirm'),
+      title: AppStrings.timeshift.unsupportedDialogTitle,
+      body: AppStrings.timeshift.unsupportedDialogBody,
+      confirmLabel: AppStrings.timeshift.unsupportedDialogConfirm,
+    );
+  }
+
+  /// Issue #654: 終了放送の viewUri を取得できなかったときの案内を、
+  /// 理由に応じた本文で同一 lv あたり 1 度だけ提示する。
+  void _showTimeshiftUnavailableDialogIfNeeded(
+    TimeshiftViewUriFailure? failure,
+  ) {
+    final String body = switch (failure) {
+      TimeshiftViewUriFailure.notLoggedIn =>
+        AppStrings.timeshift.unavailableNotLoggedInBody,
+      TimeshiftViewUriFailure.notWatchable =>
+        AppStrings.timeshift.unavailableNotWatchableBody,
+      _ => AppStrings.timeshift.unavailableFailedBody,
+    };
+    _showTimeshiftDialogIfNeeded(
+      dialogKey: const Key('timeshift-unavailable-dialog'),
+      confirmKey: const Key('timeshift-unavailable-dialog-confirm'),
+      title: AppStrings.timeshift.unavailableDialogTitle,
+      body: body,
+      confirmLabel: AppStrings.timeshift.unavailableDialogConfirm,
+    );
+  }
+
+  void _showTimeshiftDialogIfNeeded({
+    required Key dialogKey,
+    required Key confirmKey,
+    required String title,
+    required String body,
+    required String confirmLabel,
+  }) {
     final String lv = _currentLv;
     if (lv.isEmpty) {
       return;
     }
     // Issue #1017: ライブで視聴していた放送が再接続の途中で終わっただけの
-    // 場合は、未対応機能の案内ではなく放送終了の表示（ConnectionStatus.ended）
+    // 場合は、タイムシフトの案内ではなく放送終了の表示（ConnectionStatus.ended）
     // だけを見せる。提示済みとしては記録しないので、終了後にユーザが接続し
     // 直した（＝終わった放送を開いた）ときは従来どおり 1 度だけ案内する。
     if (_connectionSupervisor.hasStreamedSinceConnectionStart) {
-      log(
-        'Skipped timeshift-unsupported dialog (broadcast ended while live)',
-        name: 'App',
-      );
+      log('Skipped timeshift dialog (broadcast ended while live)', name: 'App');
       return;
     }
-    if (_lastTimeshiftUnsupportedDialogLv == lv) {
+    if (_lastTimeshiftDialogLv == lv) {
       return;
     }
-    _lastTimeshiftUnsupportedDialogLv = lv;
+    _lastTimeshiftDialogLv = lv;
 
     final NavigatorState? navigator = _navigatorKey.currentState;
     if (navigator == null || !navigator.mounted) {
-      log(
-        'Skipped timeshift-unsupported dialog (no navigator yet)',
-        name: 'App',
-      );
+      log('Skipped timeshift dialog (no navigator yet)', name: 'App');
       return;
     }
 
@@ -762,21 +769,21 @@ class _ComeruneAppState extends State<ComeruneApp> {
         context: navigator.context,
         builder: (BuildContext dialogContext) {
           return AlertDialog(
-            key: const Key('timeshift-unsupported-dialog'),
-            title: Text(AppStrings.timeshift.unsupportedDialogTitle),
-            content: Text(AppStrings.timeshift.unsupportedDialogBody),
+            key: dialogKey,
+            title: Text(title),
+            content: Text(body),
             actions: <Widget>[
               TextButton(
-                key: const Key('timeshift-unsupported-dialog-confirm'),
+                key: confirmKey,
                 onPressed: () => Navigator.of(dialogContext).pop(),
-                child: Text(AppStrings.timeshift.unsupportedDialogConfirm),
+                child: Text(confirmLabel),
               ),
             ],
           );
         },
       ).catchError((Object error, StackTrace stackTrace) {
         log(
-          'Failed to present timeshift-unsupported dialog',
+          'Failed to present timeshift dialog',
           name: 'App',
           error: error,
           stackTrace: stackTrace,
@@ -803,6 +810,8 @@ class _ComeruneAppState extends State<ComeruneApp> {
     // in-flight postComment / ensureBroadcasterStatus future sees the
     // disposed flag before we close the underlying HttpClients.
     _commentPostController.dispose();
+    // Stop acting on view URI lookups that are still running.
+    _timeshiftFetchStarter.dispose();
     _timeshiftFetchController.dispose();
     _timeshiftClient.dispose();
     _followProgramRepository.dispose();
@@ -834,11 +843,13 @@ class _ComeruneAppState extends State<ComeruneApp> {
 
   Future<void> _prepareConnection(String lv, AppSettings settings) async {
     _currentLv = lv;
-    // 異なる lv へ切り替わったタイミングで「未対応」ダイアログの提示履歴を
-    // リセットし、次回の検出で再度ユーザに案内できるようにする。
-    if (_lastTimeshiftUnsupportedDialogLv != null &&
-        _lastTimeshiftUnsupportedDialogLv != lv) {
-      _lastTimeshiftUnsupportedDialogLv = null;
+    // Issue #654: 別の番組へ切り替えたら、前の番組のタイムシフト取得を止めて
+    // 状態を戻す（同じ番組への再接続では、取得済みの状態を保つ）。
+    unawaited(_timeshiftFetchStarter.onProgramChanged(lv));
+    // 異なる lv へ切り替わったタイミングでタイムシフト関連ダイアログの
+    // 提示履歴をリセットし、次回の検出で再度ユーザに案内できるようにする。
+    if (_lastTimeshiftDialogLv != null && _lastTimeshiftDialogLv != lv) {
+      _lastTimeshiftDialogLv = null;
     }
     _programTitleNotifier.value = null;
     _broadcasterNameNotifier.value = null;
@@ -925,6 +936,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     required String Function() lvProvider,
     required Future<String> Function() userSessionProvider,
     required ProgramInfoResolver programInfoResolver,
+    required WatchPageWebSocketUrlResolver watchPageWebSocketUrlResolver,
     void Function(String title)? onProgramTitleResolved,
     void Function(String userId)? onSupplierUserIdResolved,
     void Function(String? userId, String name)? onBroadcasterNameResolved,
@@ -934,6 +946,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
   }) : _lvProvider = lvProvider,
        _userSessionProvider = userSessionProvider,
        _programInfoResolver = programInfoResolver,
+       _watchPageWebSocketUrlResolver = watchPageWebSocketUrlResolver,
        _onProgramTitleResolved = onProgramTitleResolved,
        _onSupplierUserIdResolved = onSupplierUserIdResolved,
        _onBroadcasterNameResolved = onBroadcasterNameResolved,
@@ -944,6 +957,7 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
   final String Function() _lvProvider;
   final Future<String> Function() _userSessionProvider;
   final ProgramInfoResolver _programInfoResolver;
+  final WatchPageWebSocketUrlResolver _watchPageWebSocketUrlResolver;
   final void Function(String title)? _onProgramTitleResolved;
   final void Function(String userId)? _onSupplierUserIdResolved;
   final void Function(String? userId, String name)? _onBroadcasterNameResolved;
@@ -1210,10 +1224,17 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
       session_impl.SessionWsEvent event,
     ) {
       if (event.error != null || event.errorDetail != null) {
+        // The raw error can embed the WebSocket URL with its token query;
+        // errorDetail.toString() is already sanitized.
+        final Object? error = event.error;
+        final String errorText = error == null
+            ? ''
+            : ' error='
+                  '${session_impl.SessionWsLogSanitizer.sanitizeText('$error')}';
         appDebugLog(
           '[SessionWsClientAdapter] WS event: ${event.type.name}'
           '${event.errorDetail != null ? ' detail=${event.errorDetail}' : ''}'
-          '${event.error != null ? ' error=${event.error}' : ''}',
+          '$errorText',
         );
       }
     });
@@ -1225,142 +1246,16 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
     return token != null && token.contains('anonymous');
   }
 
-  static const String _watchPageBaseUrl = 'https://live.nicovideo.jp/watch/';
-
-  /// Desktop User-Agent for the watch page fetch.
-  ///
-  /// The mobile Android UA (`Chrome Mobile`) triggers a 302 redirect to
-  /// `sp.live.nicovideo.jp` which serves a mobile page WITHOUT the
-  /// `<script id="embedded-data">` tag. A desktop Chrome UA returns the
-  /// desktop page that contains embedded-data with the webSocketUrl.
-  static const String _desktopUserAgent =
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-      '(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
-
-  static final RegExp _embeddedDataPattern = RegExp(
-    r'<script[^>]*\bid="embedded-data"[^>]*\bdata-props="([^"]*)"',
-    caseSensitive: false,
-  );
-
-  static const int _maxWatchPageRedirects = 5;
-
+  /// Reads the watch WebSocket URL (with `audience_token`) from the watch
+  /// page. Returns `null` on any failure, including when the user cannot
+  /// watch the program; the caller then falls back to cookie auth.
   Future<Uri?> _resolveWebSocketUrl(String lv, String userSession) async {
-    return _fetchWatchPageWsUrl(
-      Uri.parse('$_watchPageBaseUrl$lv'),
-      userSession,
-    );
-  }
-
-  Future<Uri?> _fetchWatchPageWsUrl(Uri watchUri, String userSession) async {
-    HttpClient? httpClient;
-    try {
-      httpClient = HttpClient();
-      httpClient.connectionTimeout = const Duration(seconds: 5);
-
-      Uri currentUri = watchUri;
-      HttpClientResponse? response;
-
-      for (
-        int redirectCount = 0;
-        redirectCount <= _maxWatchPageRedirects;
-        redirectCount++
-      ) {
-        final HttpClientRequest request = await httpClient.getUrl(currentUri);
-        request.followRedirects = false;
-        request.headers.set('Cookie', 'user_session=$userSession');
-        request.headers.set('X-Niconico-Session', userSession);
-        request.headers.set('User-Agent', _desktopUserAgent);
-        request.headers.set('Accept', 'text/html');
-
-        response = await request.close().timeout(const Duration(seconds: 8));
-        if (response.statusCode >= 300 && response.statusCode < 400) {
-          final String? location = response.headers.value('location');
-          await response.drain<void>();
-          if (location == null || location.isEmpty) {
-            return null;
-          }
-          currentUri = currentUri.resolve(location);
-          if (currentUri.host.startsWith('sp.')) {
-            return null;
-          }
-          continue;
-        }
-
-        break;
-      }
-
-      if (response == null || response.statusCode != 200) {
-        if (response != null) {
-          await response.drain<void>();
-        }
-        return null;
-      }
-
-      final String body = await response.transform(utf8.decoder).join();
-      return _extractWsUrlFromHtml(body);
-    } on Object catch (e) {
-      appDebugLog('[SessionWsClientAdapter] _fetchWatchPageWsUrl: failed: $e');
-      return null;
-    } finally {
-      httpClient?.close(force: true);
-    }
-  }
-
-  Uri? _extractWsUrlFromHtml(String body) {
-    final RegExpMatch? match = _embeddedDataPattern.firstMatch(body);
-    if (match == null) {
-      return null;
-    }
-
-    final String? escaped = match.group(1);
-    if (escaped == null || escaped.isEmpty) {
-      return null;
-    }
-    final String json = _unescapeHtmlAttribute(escaped);
-    final Object? decoded = jsonDecode(json);
-    if (decoded is! Map<String, dynamic>) {
-      return null;
-    }
-
-    final Object? site = decoded['site'];
-    if (site is! Map<String, dynamic>) {
-      return null;
-    }
-    final Object? relive = site['relive'];
-    if (relive is! Map<String, dynamic>) {
-      return null;
-    }
-    final String? wsUrl = relive['webSocketUrl'] as String?;
-    if (wsUrl == null || wsUrl.isEmpty) {
-      return null;
-    }
-
-    final Uri parsed = Uri.parse(wsUrl);
-    final Map<String, String> queryParams = Map<String, String>.from(
-      parsed.queryParameters,
-    );
-    if (!queryParams.containsKey('frontend_id')) {
-      queryParams['frontend_id'] = '9';
-    }
-    return parsed.replace(queryParameters: queryParams);
-  }
-
-  static String _unescapeHtmlAttribute(String input) {
-    String s = input;
-    s = s.replaceAll('&lt;', '<');
-    s = s.replaceAll('&gt;', '>');
-    s = s.replaceAll('&quot;', '"');
-    s = s.replaceAll('&apos;', "'");
-    s = s.replaceAll('&#34;', '"');
-    s = s.replaceAll('&#39;', "'");
-    s = s.replaceAll('&#x22;', '"');
-    s = s.replaceAll('&#x27;', "'");
-    s = s.replaceAll('&#x2F;', '/');
-    s = s.replaceAll('&#47;', '/');
-    s = s.replaceAll('&#60;', '<');
-    s = s.replaceAll('&#62;', '>');
-    s = s.replaceAll('&amp;', '&');
-    return s;
+    final WatchPageWebSocketUrlResult result =
+        await _watchPageWebSocketUrlResolver.resolve(
+          lv: lv,
+          userSession: userSession,
+        );
+    return result.url;
   }
 
   Future<void> dispose() async {

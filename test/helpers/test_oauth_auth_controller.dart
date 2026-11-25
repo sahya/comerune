@@ -9,14 +9,22 @@ import 'package:comerune/data/auth/oauth_bff/oauth_state_generator.dart';
 import 'package:comerune/data/auth/oauth_bff/oauth_state_store.dart';
 import 'package:comerune/data/auth/oauth_bff/oauth_token_store.dart';
 
+import 'in_memory_oauth_token_store.dart';
+
+export 'in_memory_oauth_token_store.dart';
+
 /// Test helper: builds an [OAuthAuthController] backed by in-memory stores
-/// and a MockClient that fails any unexpected HTTP call.
+/// and a MockClient that fails any unexpected HTTP call. Pass [tokenStore]
+/// to inspect or seed the stored tokens.
 ///
 /// Default config has all three values empty, so
 /// [OAuthAuthController.isFullyConfigured] returns false and OAuth UI
 /// entry points stay hidden in widget tests that do not exercise the
 /// flow. Callers needing the configured branch can pass a custom [config].
-OAuthAuthController buildTestOAuthAuthController({OAuthBffConfig? config}) {
+OAuthAuthController buildTestOAuthAuthController({
+  OAuthBffConfig? config,
+  OAuthTokenStore? tokenStore,
+}) {
   final OAuthBffConfig effectiveConfig =
       config ??
       const OAuthBffConfig(
@@ -30,7 +38,7 @@ OAuthAuthController buildTestOAuthAuthController({OAuthBffConfig? config}) {
     config: effectiveConfig,
     stateGenerator: SecureOAuthStateGenerator(),
     stateStore: _InMemoryStateStore(),
-    tokenStore: _InMemoryTokenStore(),
+    tokenStore: tokenStore ?? InMemoryOAuthTokenStore(),
     bffClient: OAuthBffClient(
       tokenEndpoint: effectiveConfig.bffTokenEndpoint,
       httpClient: MockClient(
@@ -51,19 +59,6 @@ class _InMemoryStateStore implements OAuthStateStore {
 
   @override
   Future<OAuthAuthorizationState?> read() async => _v;
-
-  @override
-  Future<void> clear() async => _v = null;
-}
-
-class _InMemoryTokenStore implements OAuthTokenStore {
-  OAuthTokens? _v;
-
-  @override
-  Future<void> save(OAuthTokens tokens) async => _v = tokens;
-
-  @override
-  Future<OAuthTokens?> read() async => _v;
 
   @override
   Future<void> clear() async => _v = null;

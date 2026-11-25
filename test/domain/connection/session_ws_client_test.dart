@@ -1,10 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:comerune/domain/connection/session_ws_client.dart';
 import 'package:comerune/domain/models/comment_post_result.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/fake_session_ws_channel.dart';
+import '../../helpers/recording_settings_store.dart';
 
 void main() {
   group('SessionWsMessageParser', () {
@@ -212,6 +216,7 @@ void main() {
       final String raw = jsonEncode(<String, Object?>{
         'url': 'https://u:p@e.co:9/p?a=1#f',
         'socket': 'wss://u:p@e.co:9/ws?token=abc#x',
+        'plainSocket': 'ws://u:p@e.co:9/ws?token=abc#x',
       });
 
       final String sanitized = SessionWsLogSanitizer.sanitizeRawJson(raw);
@@ -220,6 +225,7 @@ void main() {
 
       expect(decoded['url'], 'https://e.co:9/p');
       expect(decoded['socket'], 'wss://e.co:9/ws');
+      expect(decoded['plainSocket'], 'ws://e.co:9/ws');
     });
 
     test('masks password-like keys as sensitive information', () {
@@ -232,9 +238,142 @@ void main() {
 
       expect(decoded['password'], '***');
     });
+
+    test('sanitizeText strips URL queries in free-form text untruncated', () {
+      const String text =
+          "WebSocketChannelException: WebSocketException: Connection to "
+          "'https://a.live2.nicovideo.jp/wsapi/v2/watch/lv1?audience_token=t1#' "
+          'was not upgraded to websocket; '
+          'also ws://127.0.0.1:8080/ws?audience_token=t2 and '
+          'wss://u:p@e.co/ws?token=t3';
+
+      final String sanitized = SessionWsLogSanitizer.sanitizeText(text);
+
+      expect(sanitized, isNot(contains('t1')));
+      expect(sanitized, isNot(contains('t2')));
+      expect(sanitized, isNot(contains('t3')));
+      expect(sanitized, isNot(contains('u:p@')));
+      expect(sanitized, isNot(contains('…')));
+      expect(
+        sanitized,
+        contains('https://a.live2.nicovideo.jp/wsapi/v2/watch/lv1'),
+      );
+      expect(sanitized, contains('ws://127.0.0.1:8080/ws'));
+      expect(sanitized, endsWith('wss://e.co/ws'));
+      expect(sanitized, contains('was not upgraded to websocket'));
+    });
+
+    test('sanitizeText drops the query and user info of a URL it cannot '
+        'parse', () {
+      expect(
+        SessionWsLogSanitizer.sanitizeText(
+          'see https://[bad/path?audience_token=t1',
+        ),
+        'see https://[bad/path',
+      );
+      expect(
+        SessionWsLogSanitizer.sanitizeText(
+          'see https://u:p@[bad/path?audience_token=t1',
+        ),
+        'see https://[bad/path',
+      );
+      expect(
+        SessionWsLogSanitizer.sanitizeText('see https://u:p@[bad#t1'),
+        'see https://[bad',
+      );
+    });
+
+    test('redacts session header values entirely and keeps the rest', () {
+      final Map<String, String> sanitized =
+          SessionWsLogSanitizer.sanitizeHeaders(const <String, String>{
+            'Cookie': 'user_session=user_session_12345_abcdefghijklmnop',
+            'x-niconico-session': 'user_session_12345_abcdefghijklmnop',
+            'Origin': 'https://live.nicovideo.jp',
+            'User-Agent': 'comerune-test-agent',
+          });
+
+      expect(sanitized, <String, String>{
+        'Cookie': SessionWsLogSanitizer.redactedHeaderValue,
+        'x-niconico-session': SessionWsLogSanitizer.redactedHeaderValue,
+        'Origin': 'https://live.nicovideo.jp',
+        'User-Agent': 'comerune-test-agent',
+      });
+    });
+
+    test('redacts empty and short session header values too', () {
+      final Map<String, String> sanitized =
+          SessionWsLogSanitizer.sanitizeHeaders(const <String, String>{
+            'Cookie': '',
+            'X-Niconico-Session': 'ab',
+          });
+
+      expect(sanitized['Cookie'], SessionWsLogSanitizer.redactedHeaderValue);
+      expect(
+        sanitized['X-Niconico-Session'],
+        SessionWsLogSanitizer.redactedHeaderValue,
+      );
+    });
   });
 
   group('SessionWsClient', () {
+    test(
+      'default channelFactory logs no part of the session header values',
+      () async {
+        const String sessionValue = 'Zq7k_98765_SECRETVALUE_xyz9';
+        final HttpServer server = await HttpServer.bind(
+          InternetAddress.loopbackIPv4,
+          0,
+        );
+        final List<WebSocket> serverSockets = <WebSocket>[];
+        addTearDown(() async {
+          for (final WebSocket socket in serverSockets) {
+            await socket.close();
+          }
+          await server.close(force: true);
+        });
+        final Completer<HttpHeaders> receivedHeaders = Completer<HttpHeaders>();
+        server.listen((HttpRequest request) async {
+          receivedHeaders.complete(request.headers);
+          serverSockets.add(await WebSocketTransformer.upgrade(request));
+        });
+
+        final SessionWsClient client = SessionWsClient(
+          lv: 'lv123456789',
+          webSocketUri: Uri.parse('ws://127.0.0.1:${server.port}/wsapi/test'),
+          startWatchingMode: SessionWsStartWatchingMode.commentOnly,
+          connectHeaders: const <String, String>{
+            'Cookie': 'user_session=$sessionValue',
+            'X-Niconico-Session': sessionValue,
+          },
+        );
+        addTearDown(client.dispose);
+
+        final List<String> logs = <String>[];
+        await withCapturedDebugPrint(logs, client.connect);
+
+        final String factoryLog = logs.singleWhere(
+          (String line) => line.contains('_defaultChannelFactory'),
+        );
+        expect(factoryLog, contains('Cookie'));
+        expect(factoryLog, contains('X-Niconico-Session'));
+        expect(factoryLog, contains(SessionWsLogSanitizer.redactedHeaderValue));
+        for (final String line in logs) {
+          expect(line, isNot(contains('user_session=')));
+          expect(line, isNot(contains(sessionValue)));
+          expect(line, isNot(contains(sessionValue.substring(0, 4))));
+          expect(
+            line,
+            isNot(contains(sessionValue.substring(sessionValue.length - 4))),
+          );
+        }
+
+        // Only the log is redacted; the real values still reach the server.
+        final HttpHeaders headers = await receivedHeaders.future;
+        expect(headers.value('cookie'), 'user_session=$sessionValue');
+        expect(headers.value('x-niconico-session'), sessionValue);
+      },
+    );
+
     test('applies default Android User-Agent header', () {
       final SessionWsClient client = SessionWsClient(lv: 'lv123456789');
 
@@ -256,7 +395,7 @@ void main() {
     });
 
     test('passes resolved headers to custom channelFactory', () async {
-      final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+      final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
       Map<String, String>? capturedHeaders;
 
       final SessionWsClient client = SessionWsClient(
@@ -279,7 +418,7 @@ void main() {
     });
 
     test('sends startWatching on connect and pong on keepalive', () async {
-      final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+      final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
       final SessionWsClient client = SessionWsClient(
         lv: 'lv123456789',
         channelFactory: (_, _) async => fakeChannel,
@@ -325,7 +464,7 @@ void main() {
     });
 
     test('sends minimal startWatching payload when configured', () async {
-      final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+      final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
       final SessionWsClient client = SessionWsClient(
         lv: 'lv123456789',
         channelFactory: (_, _) async => fakeChannel,
@@ -347,7 +486,7 @@ void main() {
     test(
       'emits keepalive failure and disconnects when pong send fails',
       () async {
-        final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel(
+        final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel(
           failOnPong: true,
         );
         final SessionWsClient client = SessionWsClient(
@@ -384,7 +523,7 @@ void main() {
     );
 
     test('responds to ping keepalive when configured', () async {
-      final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+      final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
       final SessionWsClient client = SessionWsClient(
         lv: 'lv123456789',
         channelFactory: (_, _) async => fakeChannel,
@@ -411,7 +550,7 @@ void main() {
         // CPU 競合で `Timer.periodic(1s)` の発火が遅延して flake する。
         // `fake_async` で仮想時間化し、決定的に 2 回分 tick を進める。
         fakeAsync((FakeAsync async) {
-          final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+          final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
           final SessionWsClient client = SessionWsClient(
             lv: 'lv123456789',
             channelFactory: (_, _) async => fakeChannel,
@@ -450,7 +589,7 @@ void main() {
         // StreamSubscription.cancel の既知の非互換）。実時間を使いつつ、
         // CPU 競合で 1s timer の発火が遅延しても安定して完了できるよう
         // 余裕を十分取る（5s = timer 1 周 + disconnect 完了 + マージン）。
-        final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel(
+        final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel(
           failOnKeepSeat: true,
         );
         final SessionWsClient client = SessionWsClient(
@@ -505,7 +644,7 @@ void main() {
     test(
       'emits ndgr endpoint event before legacy when both exist in message',
       () async {
-        final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+        final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
         final SessionWsClient client = SessionWsClient(
           lv: 'lv123456789',
           channelFactory: (_, _) async => fakeChannel,
@@ -549,7 +688,7 @@ void main() {
     test(
       'delays legacy fallback and prefers ndgr if ndgr arrives in grace window',
       () async {
-        final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+        final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
         final SessionWsClient client = SessionWsClient(
           lv: 'lv123456789',
           channelFactory: (_, _) async => fakeChannel,
@@ -601,7 +740,7 @@ void main() {
     test(
       'emits legacy endpoint when ndgr is not found after grace delay',
       () async {
-        final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+        final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
         final SessionWsClient client = SessionWsClient(
           lv: 'lv123456789',
           channelFactory: (_, _) async => fakeChannel,
@@ -640,7 +779,7 @@ void main() {
     test(
       'does not postpone legacy fallback timer on unrelated incoming messages',
       () async {
-        final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+        final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
         final SessionWsClient client = SessionWsClient(
           lv: 'lv123456789',
           channelFactory: (_, _) async => fakeChannel,
@@ -686,7 +825,7 @@ void main() {
     );
 
     test('emits failed on unknown disconnect event', () async {
-      final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+      final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
       final SessionWsClient client = SessionWsClient(
         lv: 'lv123456789',
         channelFactory: (_, _) async => fakeChannel,
@@ -738,7 +877,7 @@ void main() {
     });
 
     test('emits failed when endpoint resolution times out', () async {
-      final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+      final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
       final SessionWsClient client = SessionWsClient(
         lv: 'lv123456789',
         channelFactory: (_, _) async => fakeChannel,
@@ -789,10 +928,10 @@ void main() {
     });
 
     test('can reconnect after startWatching send failure', () async {
-      final _FakeSessionWsChannel firstChannel = _FakeSessionWsChannel(
+      final FakeSessionWsChannel firstChannel = FakeSessionWsChannel(
         failOnStartWatching: true,
       );
-      final _FakeSessionWsChannel secondChannel = _FakeSessionWsChannel();
+      final FakeSessionWsChannel secondChannel = FakeSessionWsChannel();
       int factoryCallCount = 0;
 
       final SessionWsClient client = SessionWsClient(
@@ -843,10 +982,10 @@ void main() {
     });
 
     test('ignores connect call while disconnect is in progress', () async {
-      final _FakeSessionWsChannel firstChannel = _FakeSessionWsChannel(
+      final FakeSessionWsChannel firstChannel = FakeSessionWsChannel(
         closeDelay: const Duration(milliseconds: 60),
       );
-      final _FakeSessionWsChannel secondChannel = _FakeSessionWsChannel();
+      final FakeSessionWsChannel secondChannel = FakeSessionWsChannel();
       int factoryCallCount = 0;
       final SessionWsClient client = SessionWsClient(
         lv: 'lv123456789',
@@ -917,7 +1056,7 @@ void main() {
     });
 
     test('is safe to call disconnect twice concurrently', () async {
-      final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel(
+      final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel(
         closeDelay: const Duration(milliseconds: 50),
       );
       final SessionWsClient client = SessionWsClient(
@@ -950,7 +1089,7 @@ void main() {
     });
 
     test('throws StateError when connect is called after dispose', () async {
-      final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+      final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
       final SessionWsClient client = SessionWsClient(
         lv: 'lv123456789',
         channelFactory: (_, _) async => fakeChannel,
@@ -964,7 +1103,7 @@ void main() {
 
     group('postComment', () {
       test('sends postComment JSON and resolves on success response', () async {
-        final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+        final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
         final SessionWsClient client = SessionWsClient(
           lv: 'lv123456789',
           channelFactory: (_, _) async => fakeChannel,
@@ -1009,7 +1148,7 @@ void main() {
       });
 
       test('resolves with error on postCommentResult error', () async {
-        final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+        final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
         final SessionWsClient client = SessionWsClient(
           lv: 'lv123456789',
           channelFactory: (_, _) async => fakeChannel,
@@ -1042,7 +1181,7 @@ void main() {
       test('returns network error when not connected', () async {
         final SessionWsClient client = SessionWsClient(
           lv: 'lv123456789',
-          channelFactory: (_, _) async => _FakeSessionWsChannel(),
+          channelFactory: (_, _) async => FakeSessionWsChannel(),
         );
 
         final CommentPostResult result = await client.postComment(
@@ -1058,7 +1197,7 @@ void main() {
       });
 
       test('rejects concurrent postComment calls', () async {
-        final _FakeSessionWsChannel fakeChannel = _FakeSessionWsChannel();
+        final FakeSessionWsChannel fakeChannel = FakeSessionWsChannel();
         final SessionWsClient client = SessionWsClient(
           lv: 'lv123456789',
           channelFactory: (_, _) async => fakeChannel,
@@ -1097,95 +1236,50 @@ void main() {
         await client.dispose();
       });
     });
+
+    test('does not log the URL query token when the handshake is '
+        'rejected', () async {
+      const String token = 'test-audience-token-do-not-log';
+      final HttpServer server = await HttpServer.bind(
+        InternetAddress.loopbackIPv4,
+        0,
+      );
+      addTearDown(() => server.close(force: true));
+      server.listen((HttpRequest request) {
+        request.response
+          ..statusCode = HttpStatus.forbidden
+          ..close();
+      });
+
+      final SessionWsClient client = SessionWsClient(
+        lv: 'lv123456789',
+        webSocketUri: Uri.parse(
+          'ws://${server.address.host}:${server.port}/wsapi/v2/watch/lv1'
+          '?audience_token=$token',
+        ),
+      );
+      addTearDown(client.dispose);
+      final Future<SessionWsEvent> errorEvent = client.events.firstWhere(
+        (SessionWsEvent event) => event.type == SessionWsEventType.error,
+      );
+
+      final List<String> logs = <String>[];
+      await withCapturedDebugPrint(logs, client.connect);
+      final SessionWsEvent event = await errorEvent;
+
+      // Precondition: the raw exception really carries the token, so this
+      // test fails if the sanitizing is removed.
+      expect(event.error.toString(), contains(token));
+      expect(
+        logs,
+        contains(contains('[SessionWsClient] connect: channel open failed')),
+      );
+      expect(logs, everyElement(isNot(contains(token))));
+      expect(event.errorDetail.toString(), isNot(contains(token)));
+      expect(
+        SessionWsLogSanitizer.sanitizeText(event.error.toString()),
+        isNot(contains(token)),
+      );
+    });
   });
-}
-
-class _FakeSessionWsChannel implements SessionWsChannel {
-  _FakeSessionWsChannel({
-    this.failOnPong = false,
-    this.failOnKeepSeat = false,
-    this.failOnStartWatching = false,
-    this.closeDelay = Duration.zero,
-  }) : _incoming = StreamController<dynamic>(),
-       _sink = _FakeSink() {
-    _sink.onAdd = (dynamic data) {
-      sentMessages.add(data);
-
-      if (!failOnPong && !failOnKeepSeat && !failOnStartWatching) {
-        return;
-      }
-
-      final Map<String, dynamic> decoded =
-          jsonDecode(data as String) as Map<String, dynamic>;
-      if (failOnStartWatching && decoded['type'] == 'startWatching') {
-        throw StateError('startWatching send failed');
-      }
-      if (failOnPong && decoded['type'] == 'pong') {
-        throw StateError('pong send failed');
-      }
-      if (failOnKeepSeat && decoded['type'] == 'keepSeat') {
-        throw StateError('keepSeat send failed');
-      }
-    };
-  }
-
-  final bool failOnPong;
-  final bool failOnKeepSeat;
-  final bool failOnStartWatching;
-  final Duration closeDelay;
-  final StreamController<dynamic> _incoming;
-  final _FakeSink _sink;
-  final List<dynamic> sentMessages = <dynamic>[];
-  int closeCount = 0;
-
-  @override
-  Stream<dynamic> get stream => _incoming.stream;
-
-  @override
-  StreamSink<dynamic> get sink => _sink;
-
-  void pushIncoming(dynamic data) {
-    _incoming.add(data);
-  }
-
-  @override
-  Future<void> close([int? code, String? reason]) async {
-    closeCount += 1;
-    if (closeDelay > Duration.zero) {
-      await Future<void>.delayed(closeDelay);
-    }
-    await _sink.close();
-    if (!_incoming.isClosed) {
-      await _incoming.close();
-    }
-  }
-}
-
-class _FakeSink implements StreamSink<dynamic> {
-  void Function(dynamic data)? onAdd;
-  final Completer<void> _done = Completer<void>();
-
-  @override
-  void add(dynamic data) {
-    onAdd?.call(data);
-  }
-
-  @override
-  void addError(Object error, [StackTrace? stackTrace]) {}
-
-  @override
-  Future<void> addStream(Stream<dynamic> stream) {
-    return stream.forEach(add);
-  }
-
-  @override
-  Future<void> close() {
-    if (!_done.isCompleted) {
-      _done.complete();
-    }
-    return _done.future;
-  }
-
-  @override
-  Future<void> get done => _done.future;
 }

@@ -174,6 +174,31 @@ void main() {
     });
   });
 
+  group('signOut', () {
+    test('deletes the stored tokens and clears the outcome (#1053)', () async {
+      final _InMemoryTokenStore tokenStore = _InMemoryTokenStore();
+      final c = _build(
+        config: _config(),
+        stateStore: _ThrowingStateStore(),
+        tokenStore: tokenStore,
+      );
+      await tokenStore.save(
+        const OAuthTokens(
+          accessToken: 'access',
+          tokenType: 'Bearer',
+          expiresInSeconds: 3600,
+        ),
+      );
+      await c.startLogin(); // leaves a failure outcome
+      expect(c.outcome.value, isNotNull);
+
+      await c.signOut();
+
+      expect(await tokenStore.read(), isNull);
+      expect(c.outcome.value, isNull);
+    });
+  });
+
   group('attach', () {
     test('is idempotent — calling twice does not double-attach', () async {
       // No AppLinks instance is provided; the underlying service will try
