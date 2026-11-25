@@ -168,6 +168,15 @@ void main() {
     });
   });
 
+  group('AppStrings.timeshift comments shown snackbar', () {
+    test('終了番組を開いたときのスナックバー文言が既定ロケールで固定される（Issue #1071）', () {
+      expect(AppStrings.timeshift.commentsShownSnackbar, 'タイムシフトのコメントを表示しています');
+      expect(AppStrings.timeshift.commentsShownStatsAction, '統計を見る');
+      // すでに終わった番組なので、いま終わったようには読めない文言にする。
+      expect(AppStrings.timeshift.commentsShownSnackbar, isNot(contains('終了')));
+    });
+  });
+
   group('AppStrings.commentDisplaySettings', () {
     test('pastCommentFetchCountDescription は取得数と表示保持数の区別を説明し、'
         'buffer サイズは引数で注入される（Issue #668）', () {

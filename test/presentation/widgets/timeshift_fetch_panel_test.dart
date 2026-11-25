@@ -4,12 +4,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:comerune/application/timeshift_fetch/timeshift_fetch_controller.dart';
 import 'package:comerune/presentation/widgets/timeshift_fetch_panel.dart';
 
+import '../../helpers/fake_timeshift_fetch_controller.dart';
+
 void main() {
   group('TimeshiftFetchPanel', () {
     testWidgets('shows nothing when idle', (WidgetTester tester) async {
-      final _FakeController controller = _FakeController(
-        status: TimeshiftFetchStatus.idle,
-      );
+      final FakeTimeshiftFetchController controller =
+          FakeTimeshiftFetchController(status: TimeshiftFetchStatus.idle);
 
       await tester.pumpWidget(_wrap(controller));
 
@@ -21,11 +22,12 @@ void main() {
     testWidgets('shows fetch buttons when paused with hasMore', (
       WidgetTester tester,
     ) async {
-      final _FakeController controller = _FakeController(
-        status: TimeshiftFetchStatus.paused,
-        hasMore: true,
-        totalFetched: 5000,
-      );
+      final FakeTimeshiftFetchController controller =
+          FakeTimeshiftFetchController(
+            status: TimeshiftFetchStatus.paused,
+            hasMore: true,
+            totalFetched: 5000,
+          );
 
       await tester.pumpWidget(_wrap(controller));
 
@@ -38,10 +40,11 @@ void main() {
     testWidgets('shows progress indicator and cancel when fetching', (
       WidgetTester tester,
     ) async {
-      final _FakeController controller = _FakeController(
-        status: TimeshiftFetchStatus.fetching,
-        totalFetched: 2000,
-      );
+      final FakeTimeshiftFetchController controller =
+          FakeTimeshiftFetchController(
+            status: TimeshiftFetchStatus.fetching,
+            totalFetched: 2000,
+          );
 
       await tester.pumpWidget(_wrap(controller));
 
@@ -52,10 +55,11 @@ void main() {
     });
 
     testWidgets('shows completed status', (WidgetTester tester) async {
-      final _FakeController controller = _FakeController(
-        status: TimeshiftFetchStatus.completed,
-        totalFetched: 10000,
-      );
+      final FakeTimeshiftFetchController controller =
+          FakeTimeshiftFetchController(
+            status: TimeshiftFetchStatus.completed,
+            totalFetched: 10000,
+          );
 
       await tester.pumpWidget(_wrap(controller));
 
@@ -64,9 +68,8 @@ void main() {
     });
 
     testWidgets('shows retry button on error', (WidgetTester tester) async {
-      final _FakeController controller = _FakeController(
-        status: TimeshiftFetchStatus.error,
-      );
+      final FakeTimeshiftFetchController controller =
+          FakeTimeshiftFetchController(status: TimeshiftFetchStatus.error);
 
       await tester.pumpWidget(_wrap(controller));
 
@@ -79,13 +82,14 @@ void main() {
       (WidgetTester tester) async {
         // Issue #639 cause 5: 権限不足などの再試行不能エラーでは
         // リトライボタンを表示せず、誘導文だけを表示する。
-        final _FakeController controller = _FakeController(
-          status: TimeshiftFetchStatus.error,
-          lastError: TimeshiftFetchError(
-            retryable: false,
-            cause: Exception('HTTP 403'),
-          ),
-        );
+        final FakeTimeshiftFetchController controller =
+            FakeTimeshiftFetchController(
+              status: TimeshiftFetchStatus.error,
+              lastError: TimeshiftFetchError(
+                retryable: false,
+                cause: Exception('HTTP 403'),
+              ),
+            );
 
         await tester.pumpWidget(_wrap(controller));
 
@@ -99,13 +103,14 @@ void main() {
     testWidgets('shows retry button when lastError is retryable', (
       WidgetTester tester,
     ) async {
-      final _FakeController controller = _FakeController(
-        status: TimeshiftFetchStatus.error,
-        lastError: TimeshiftFetchError(
-          retryable: true,
-          cause: Exception('network'),
-        ),
-      );
+      final FakeTimeshiftFetchController controller =
+          FakeTimeshiftFetchController(
+            status: TimeshiftFetchStatus.error,
+            lastError: TimeshiftFetchError(
+              retryable: true,
+              cause: Exception('network'),
+            ),
+          );
 
       await tester.pumpWidget(_wrap(controller));
 
@@ -119,10 +124,11 @@ void main() {
       bool fetch1000Called = false;
       bool fetchAllCalled = false;
 
-      final _FakeController controller = _FakeController(
-        status: TimeshiftFetchStatus.paused,
-        hasMore: true,
-      );
+      final FakeTimeshiftFetchController controller =
+          FakeTimeshiftFetchController(
+            status: TimeshiftFetchStatus.paused,
+            hasMore: true,
+          );
 
       await tester.pumpWidget(
         MaterialApp(
@@ -152,9 +158,8 @@ void main() {
     testWidgets('cancel callback is invoked', (WidgetTester tester) async {
       bool cancelCalled = false;
 
-      final _FakeController controller = _FakeController(
-        status: TimeshiftFetchStatus.fetching,
-      );
+      final FakeTimeshiftFetchController controller =
+          FakeTimeshiftFetchController(status: TimeshiftFetchStatus.fetching);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -178,9 +183,8 @@ void main() {
     testWidgets('retry callback is invoked', (WidgetTester tester) async {
       bool retryCalled = false;
 
-      final _FakeController controller = _FakeController(
-        status: TimeshiftFetchStatus.error,
-      );
+      final FakeTimeshiftFetchController controller =
+          FakeTimeshiftFetchController(status: TimeshiftFetchStatus.error);
 
       await tester.pumpWidget(
         MaterialApp(
@@ -203,7 +207,7 @@ void main() {
   });
 }
 
-Widget _wrap(_FakeController controller) {
+Widget _wrap(FakeTimeshiftFetchController controller) {
   return MaterialApp(
     home: Scaffold(
       body: TimeshiftFetchPanel(
@@ -216,61 +220,4 @@ Widget _wrap(_FakeController controller) {
       ),
     ),
   );
-}
-
-class _FakeController extends ChangeNotifier
-    implements TimeshiftFetchController {
-  _FakeController({
-    TimeshiftFetchStatus status = TimeshiftFetchStatus.idle,
-    bool hasMore = false,
-    int totalFetched = 0,
-    bool isFetchingAll = false,
-    TimeshiftFetchError? lastError,
-  }) : _status = status,
-       _hasMore = hasMore,
-       _totalFetched = totalFetched,
-       _isFetchingAll = isFetchingAll,
-       _lastError = lastError;
-
-  TimeshiftFetchStatus _status;
-  final bool _hasMore;
-  final int _totalFetched;
-  final bool _isFetchingAll;
-  final TimeshiftFetchError? _lastError;
-
-  @override
-  TimeshiftFetchStatus get status => _status;
-
-  @override
-  bool get hasMore => _hasMore;
-
-  @override
-  int get totalFetched => _totalFetched;
-
-  @override
-  bool get isFetchingAll => _isFetchingAll;
-
-  @override
-  TimeshiftFetchError? get lastError => _lastError;
-
-  @override
-  Future<void> fetchInitial(Uri viewApiUri) async {}
-
-  @override
-  Future<void> fetchMore(int count) async {}
-
-  @override
-  Future<void> fetchAll() async {}
-
-  @override
-  Future<void> cancel() async {}
-
-  @override
-  void reset() {
-    _status = TimeshiftFetchStatus.idle;
-    notifyListeners();
-  }
-
-  @override
-  Future<void> cancelAndReset() async => reset();
 }

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:comerune/application/timeshift_fetch/timeshift_fetch_controller.dart';
 import 'package:comerune/domain/connection/connection_supervisor.dart';
 import 'package:comerune/data/comment_log/comment_log_writer.dart';
 import 'package:comerune/domain/matchers/ng_matcher.dart';
@@ -27,6 +28,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:wakelock_plus_platform_interface/wakelock_plus_platform_interface.dart';
 
 import '../../_support/rich_text_finders.dart';
+import '../../helpers/fake_timeshift_fetch_controller.dart';
 import '../../helpers/fake_wakelock_plus_platform.dart';
 
 void main() {
@@ -5088,6 +5090,229 @@ void main() {
       },
     );
 
+    // Issue #1071: opening a program that had already ended reaches `ended`
+    // without streaming live. Its comments come from the timeshift fetch,
+    // so it gets its own SnackBar instead of "放送が終了しました".
+    group('opened ended program (Issue #1071)', () {
+      final List<AppMessage> fetched = <AppMessage>[
+        _message(id: 'c1', type: AppMessageType.chat, content: 'hello'),
+        _message(id: 'c2', type: AppMessageType.chat, content: 'world'),
+      ];
+
+      Future<void> finishFetch(
+        WidgetTester tester,
+        FakeTimeshiftFetchController controller, {
+        TimeshiftFetchStatus result = TimeshiftFetchStatus.paused,
+      }) async {
+        controller.setStatus(TimeshiftFetchStatus.fetching);
+        controller.setStatus(result);
+        // One frame for the post-frame check, one to show the SnackBar.
+        await tester.pump();
+        await tester.pump();
+      }
+
+      testWidgets('reconnecting with comments left shows no '
+          '"放送が終了しました" SnackBar or stats panel', (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildNeverStreamedSupervisor();
+
+        await tester.pumpWidget(
+          _buildScreen(supervisor: supervisor, messages: fetched),
+        );
+
+        expect(supervisor.endBroadcast(), isTrue);
+        await tester.pump();
+        await tester.pump();
+
+        expect(
+          find.byKey(const Key('broadcast-ended-stats-snackbar')),
+          findsNothing,
+        );
+        expect(find.text('放送が終了しました'), findsNothing);
+        expect(find.byKey(const Key('stats-panel')), findsNothing);
+      });
+
+      testWidgets('the first finished fetch shows the timeshift SnackBar once '
+          'and leaves the stats panel closed', (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildNeverStreamedSupervisor();
+        final FakeTimeshiftFetchController controller =
+            FakeTimeshiftFetchController();
+        addTearDown(controller.dispose);
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: const <AppMessage>[],
+            timeshiftFetchController: controller,
+          ),
+        );
+        expect(supervisor.endBroadcast(), isTrue);
+        await tester.pump();
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: fetched,
+            timeshiftFetchController: controller,
+          ),
+        );
+        await finishFetch(tester, controller);
+
+        expect(
+          find.byKey(const Key('timeshift-comments-shown-snackbar')),
+          findsOneWidget,
+        );
+        expect(find.text('タイムシフトのコメントを表示しています'), findsOneWidget);
+        expect(find.widgetWithText(SnackBarAction, '統計を見る'), findsOneWidget);
+        expect(find.text('放送が終了しました'), findsNothing);
+        expect(find.byKey(const Key('stats-panel')), findsNothing);
+
+        // A later "500件取得" must not show it again.
+        await finishFetch(
+          tester,
+          controller,
+          result: TimeshiftFetchStatus.completed,
+        );
+        // A SnackBar with an action stays until dismissed; a queued second
+        // one would appear once the first has animated out.
+        ScaffoldMessenger.of(
+          tester.element(find.byType(CommentScreen)),
+        ).hideCurrentSnackBar();
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('timeshift-comments-shown-snackbar')),
+          findsNothing,
+        );
+      });
+
+      testWidgets('"統計を見る" opens the stats of the comments fetched so far', (
+        WidgetTester tester,
+      ) async {
+        final ConnectionSupervisor supervisor = _buildNeverStreamedSupervisor();
+        final FakeTimeshiftFetchController controller =
+            FakeTimeshiftFetchController();
+        addTearDown(controller.dispose);
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: fetched,
+            timeshiftFetchController: controller,
+          ),
+        );
+        expect(supervisor.endBroadcast(), isTrue);
+        await tester.pump();
+        await finishFetch(tester, controller);
+
+        final SnackBarAction action = tester.widget<SnackBarAction>(
+          find.widgetWithText(SnackBarAction, '統計を見る'),
+        );
+        action.onPressed();
+        await tester.pump();
+
+        expect(find.byKey(const Key('stats-panel-expanded')), findsOneWidget);
+        expect(find.text('コメント統計サマリ'), findsOneWidget);
+        expect(find.text('2'), findsOneWidget); // total comments
+      });
+
+      for (final ({String label, List<AppMessage> messages, bool fails}) c
+          in <({String label, List<AppMessage> messages, bool fails})>[
+            (label: 'got no comments', messages: <AppMessage>[], fails: false),
+            (label: 'failed', messages: <AppMessage>[], fails: true),
+          ]) {
+        testWidgets('no timeshift SnackBar when the fetch ${c.label}', (
+          WidgetTester tester,
+        ) async {
+          final ConnectionSupervisor supervisor =
+              _buildNeverStreamedSupervisor();
+          final FakeTimeshiftFetchController controller =
+              FakeTimeshiftFetchController();
+          addTearDown(controller.dispose);
+
+          await tester.pumpWidget(
+            _buildScreen(
+              supervisor: supervisor,
+              messages: c.messages,
+              timeshiftFetchController: controller,
+            ),
+          );
+          expect(supervisor.endBroadcast(), isTrue);
+          await tester.pump();
+          await finishFetch(
+            tester,
+            controller,
+            result: c.fails
+                ? TimeshiftFetchStatus.error
+                : TimeshiftFetchStatus.completed,
+          );
+
+          expect(
+            find.byKey(const Key('timeshift-comments-shown-snackbar')),
+            findsNothing,
+          );
+        });
+      }
+
+      testWidgets('a fetch for another program shows the SnackBar again', (
+        WidgetTester tester,
+      ) async {
+        final ConnectionSupervisor supervisor = _buildNeverStreamedSupervisor();
+        final FakeTimeshiftFetchController controller =
+            FakeTimeshiftFetchController();
+        addTearDown(controller.dispose);
+
+        await tester.pumpWidget(
+          _buildScreen(
+            supervisor: supervisor,
+            messages: fetched,
+            timeshiftFetchController: controller,
+          ),
+        );
+        expect(supervisor.endBroadcast(), isTrue);
+        await tester.pump();
+        await finishFetch(tester, controller);
+        expect(
+          find.byKey(const Key('timeshift-comments-shown-snackbar')),
+          findsOneWidget,
+        );
+        ScaffoldMessenger.of(
+          tester.element(find.byType(CommentScreen)),
+        ).removeCurrentSnackBar();
+        await tester.pump();
+
+        // A program switch resets the fetch to idle.
+        controller.reset();
+        await finishFetch(tester, controller);
+
+        expect(
+          find.byKey(const Key('timeshift-comments-shown-snackbar')),
+          findsOneWidget,
+        );
+      });
+
+      testWidgets('a broadcast watched live keeps "放送が終了しました" even when '
+          'it ends while reconnecting', (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+        await tester.pumpWidget(
+          _buildScreen(supervisor: supervisor, messages: fetched),
+        );
+        expect(
+          supervisor.onStreamDisconnected(ConnectionErrorCode.ndgrStreamFailed),
+          isTrue,
+        );
+        await tester.pump();
+        expect(supervisor.endBroadcast(), isTrue);
+        await tester.pump();
+        await tester.pump();
+
+        expect(
+          find.byKey(const Key('broadcast-ended-stats-snackbar')),
+          findsOneWidget,
+        );
+        expect(find.byKey(const Key('stats-panel-expanded')), findsOneWidget);
+      });
+    });
+
     testWidgets('minimized stats panel can be re-expanded by tapping it', (
       WidgetTester tester,
     ) async {
@@ -8893,6 +9118,7 @@ Widget _buildScreen({
   bool ngProtectionNotificationEnabled = false,
   CommentSortOrder commentSortOrder = CommentSortOrder.ascending,
   void Function(CommentSortOrder)? onSortOrderChanged,
+  TimeshiftFetchController? timeshiftFetchController,
 }) {
   final UserNameResolution? userNameResolution = resolveUserName == null
       ? null
@@ -8956,6 +9182,7 @@ Widget _buildScreen({
         autoSaveCommentLog: autoSaveCommentLog,
         autoSaveCommentLogPath: autoSaveCommentLogPath,
       ),
+      timeshiftFetchController: timeshiftFetchController,
     ),
   );
 }
@@ -8970,6 +9197,14 @@ class _NoopListenable implements Listenable {
 
   @override
   void removeListener(VoidCallback listener) {}
+}
+
+/// A connection that started but never streamed live, as when opening a
+/// program that had already ended (Issue #1071).
+ConnectionSupervisor _buildNeverStreamedSupervisor() {
+  final ConnectionSupervisor supervisor = ConnectionSupervisor();
+  expect(supervisor.startConnection(), isTrue);
+  return supervisor;
 }
 
 ConnectionSupervisor _buildStreamingSupervisor() {

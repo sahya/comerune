@@ -856,6 +856,16 @@ class _CommentScreenState extends State<CommentScreen>
   /// (header bar only, tappable to restore). Only consulted when
   /// [_pendingStats] is non-null.
   bool _statsPanelExpanded = false;
+
+  /// Issue #1071: the last status seen on
+  /// [CommentScreen.timeshiftFetchController], so the end of a fetch can be
+  /// told apart from its progress notifications.
+  TimeshiftFetchStatus? _lastTimeshiftFetchStatus;
+
+  /// Issue #1071: whether the "showing timeshift comments" SnackBar was
+  /// already shown for the program being fetched. Cleared when the fetch
+  /// is reset for another program.
+  bool _timeshiftNoticeShown = false;
   late CommentSortOrder _sortOrder = widget.commentSortOrder;
   final Set<String> _pinnedMessageIds = <String>{};
   bool _touchActive = false;
@@ -1177,6 +1187,8 @@ class _CommentScreenState extends State<CommentScreen>
       ..addListener(_handleSearchTextChanged);
     _lastStatus = widget.connectionSupervisor.status;
     widget.connectionSupervisor.addListener(_handleConnectionChanged);
+    _lastTimeshiftFetchStatus = widget.timeshiftFetchController?.status;
+    widget.timeshiftFetchController?.addListener(_handleTimeshiftFetchChanged);
     unawaited(_resolveCommentPostContext());
 
     // Issue #876: register lifecycle observer so the auto-extend Timer
@@ -1354,6 +1366,16 @@ class _CommentScreenState extends State<CommentScreen>
       // fresh supervisor on every widget rebuild). The genuine "different
       // data source" signal is the lv change branch below; lv change
       // handles the cursor / de-dup reset there.
+    }
+
+    final TimeshiftFetchController? oldTimeshift =
+        oldWidget.timeshiftFetchController;
+    final TimeshiftFetchController? newTimeshift =
+        widget.timeshiftFetchController;
+    if (!identical(oldTimeshift, newTimeshift)) {
+      oldTimeshift?.removeListener(_handleTimeshiftFetchChanged);
+      newTimeshift?.addListener(_handleTimeshiftFetchChanged);
+      _lastTimeshiftFetchStatus = newTimeshift?.status;
     }
 
     // Issue #694 cycle-2-new (round 2) review: when the parent rebuilds
@@ -1646,6 +1668,9 @@ class _CommentScreenState extends State<CommentScreen>
       unawaited(widget.speechConfig.speechPlatform?.stop(clearQueue: true));
     }
     widget.connectionSupervisor.removeListener(_handleConnectionChanged);
+    widget.timeshiftFetchController?.removeListener(
+      _handleTimeshiftFetchChanged,
+    );
     _scrollController.removeListener(_handleScroll);
     _scrollController.dispose();
     _searchDebounceTimer?.cancel();
@@ -4250,7 +4275,12 @@ class _CommentScreenState extends State<CommentScreen>
 
     _updateEndedAtForStatus(currentStatus);
 
-    if (!_isStoppingForExit && _isStatsTrigger(currentStatus)) {
+    // Issue #1071: opening a program that had already ended is not the end
+    // of a broadcast. Its comments come from the timeshift fetch, and
+    // [_handleTimeshiftFetchChanged] tells the user about them instead.
+    if (!_isStoppingForExit &&
+        _isStatsTrigger(currentStatus) &&
+        !_isOpenedEndedProgram(currentStatus)) {
       _showStatsPanel();
     }
 
@@ -5234,6 +5264,14 @@ class _CommentScreenState extends State<CommentScreen>
     }
   }
 
+  /// Issue #1071: `true` when [status] is `ended` and this connection never
+  /// streamed live, i.e. the user opened a program that had already ended
+  /// (including a reconnect to a program that ended earlier).
+  bool _isOpenedEndedProgram(ConnectionStatus status) {
+    return status == ConnectionStatus.ended &&
+        !widget.connectionSupervisor.hasStreamedSinceConnectionStart;
+  }
+
   bool _isStatsTrigger(ConnectionStatus status) {
     if (_lastStatus == status) {
       return false;
@@ -5504,6 +5542,82 @@ class _CommentScreenState extends State<CommentScreen>
         );
       },
     );
+  }
+
+  /// Issue #1071: shows the "showing timeshift comments" SnackBar once, when
+  /// the first fetch of an ended program's comments finishes with at least
+  /// one comment to summarize.
+  ///
+  /// Unlike [_showStatsPanel], this neither opens the stats panel by itself
+  /// nor records the stats as a finished broadcast: the user did not watch
+  /// it, so the saved history must stay as it was.
+  void _handleTimeshiftFetchChanged() {
+    final TimeshiftFetchController? controller =
+        widget.timeshiftFetchController;
+    if (controller == null) {
+      return;
+    }
+    final TimeshiftFetchStatus? previous = _lastTimeshiftFetchStatus;
+    final TimeshiftFetchStatus current = controller.status;
+    _lastTimeshiftFetchStatus = current;
+    if (current == previous) {
+      return;
+    }
+    if (current == TimeshiftFetchStatus.idle) {
+      _timeshiftNoticeShown = false;
+      return;
+    }
+    final bool fetchFinished =
+        previous == TimeshiftFetchStatus.fetching &&
+        (current == TimeshiftFetchStatus.paused ||
+            current == TimeshiftFetchStatus.completed);
+    if (!fetchFinished || _timeshiftNoticeShown) {
+      return;
+    }
+    // The fetched comments reach [CommentScreen.messages] when the parent
+    // rebuilds, so they are counted after the next frame.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          _timeshiftNoticeShown ||
+          widget.connectionSupervisor.hasStreamedSinceConnectionStart ||
+          _messagesForStatsAndLogs().isEmpty) {
+        return;
+      }
+      _timeshiftNoticeShown = true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          key: const Key('timeshift-comments-shown-snackbar'),
+          content: Text(AppStrings.timeshift.commentsShownSnackbar),
+          duration: const Duration(seconds: 6),
+          action: SnackBarAction(
+            label: AppStrings.timeshift.commentsShownStatsAction,
+            onPressed: _openTimeshiftStatsPanel,
+          ),
+        ),
+      );
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  /// Issue #1071: opens the stats panel for the comments fetched so far.
+  /// Does nothing once the screen has left the ended state (for example
+  /// after a reconnect), like [_reopenStatsPanel].
+  void _openTimeshiftStatsPanel() {
+    if (!mounted || _endedAt == null) {
+      return;
+    }
+    final List<AppMessage> messagesForStats = _messagesForStatsAndLogs();
+    if (messagesForStats.isEmpty) {
+      return;
+    }
+    setState(() {
+      _pendingStats = CommentLogStats.fromMessages(
+        messagesForStats,
+        ngUserIds: widget.contentFilter.ngUserIds,
+      );
+      _pendingStatsMessages = messagesForStats;
+      _statsPanelExpanded = true;
+    });
   }
 
   /// Re-opens or expands the stats panel. Safe to call when stats are
