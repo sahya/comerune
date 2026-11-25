@@ -621,8 +621,10 @@ void main() {
     },
   );
 
+  // Issue #1065: reconnecting to an ended program reaches `ended` again.
+  // The "放送が終了しました" row is added once per program.
   testWidgets(
-    'does not add duplicate notification when endBroadcast is called twice',
+    'does not add a second notification when the same lv ends again',
     (WidgetTester tester) async {
       final ConnectionSupervisor supervisor = ConnectionSupervisor();
       final TimelineStore timelineStore = TimelineStore();
@@ -654,11 +656,61 @@ void main() {
       expect(supervisor.endBroadcast(), isTrue);
       await tester.pumpAndSettle();
 
+      // Reconnect from the terminal state, as the reconnect button does.
+      expect(supervisor.retryConnectionFromTerminal(), isTrue);
+      expect(supervisor.endBroadcast(), isTrue);
+      await tester.pumpAndSettle();
+
       final List<AppMessage> notifications = timelineStore.messages
           .where((AppMessage m) => m.type == AppMessageType.notification)
           .toList();
-      // Each ended transition should produce exactly one notification.
-      expect(notifications, hasLength(2));
+      expect(notifications, hasLength(1));
+    },
+  );
+
+  testWidgets(
+    'adds a notification for another lv after switching programs (#1065)',
+    (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = ConnectionSupervisor();
+      final TimelineStore timelineStore = TimelineStore();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SelectScreen(
+            connectionSupervisor: supervisor,
+            timelineStore: timelineStore,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.enterText(inputField(), 'lv345678901');
+      await tester.pump();
+      await tester.tap(connectButton());
+      await tester.pumpAndSettle();
+      expect(supervisor.endBroadcast(), isTrue);
+      await tester.pumpAndSettle();
+
+      Iterable<AppMessage> notifications() => timelineStore.messages.where(
+        (AppMessage m) => m.type == AppMessageType.notification,
+      );
+      expect(notifications(), hasLength(1));
+
+      // Switching lv clears the timeline, so the next program gets its own
+      // row; switching back to the first program gets one again.
+      for (final (String from, String to) in <(String, String)>[
+        ('lv345678901', 'lv999999999'),
+        ('lv999999999', 'lv345678901'),
+      ]) {
+        await tester
+            .widget<CommentScreen>(find.byType(CommentScreen))
+            .callbacks
+            .onDifferentLvConnected(from, to);
+        expect(supervisor.retryConnectionFromTerminal(), isTrue);
+        expect(supervisor.endBroadcast(), isTrue);
+        await tester.pumpAndSettle();
+        expect(notifications(), hasLength(1), reason: 'after $from -> $to');
+      }
     },
   );
 
