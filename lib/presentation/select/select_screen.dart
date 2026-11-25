@@ -305,6 +305,11 @@ class _SelectScreenState extends State<SelectScreen>
   final MethodChannelCommentSpeech _speechPlatform =
       MethodChannelCommentSpeech();
   int _broadcastEndedNotificationSequence = 0;
+
+  /// Issue #1065: the lv whose "放送が終了しました" row is already in the
+  /// timeline. Reconnecting to an ended program reaches `ended` again, and
+  /// the row is added only once per program. Cleared with the timeline.
+  String? _broadcastEndedNotificationLv;
   // Per-engine pre-mute volumes. Either being non-null means "muted".
   // Stored separately so that switching engines while muted does not lose
   // the other engine's pre-mute value (Issue #697).
@@ -521,6 +526,11 @@ class _SelectScreenState extends State<SelectScreen>
     if (store == null) {
       return;
     }
+    final String? lv = _lastConnectedLv;
+    if (lv != null && lv == _broadcastEndedNotificationLv) {
+      return;
+    }
+    _broadcastEndedNotificationLv = lv;
 
     final DateTime now = DateTime.now();
     store.add(
@@ -592,6 +602,7 @@ class _SelectScreenState extends State<SelectScreen>
     final AppSettings settings = _settingsNotifier.value;
     if (_lastConnectedLv != null && _lastConnectedLv != lv) {
       widget.timelineStore?.clear();
+      _broadcastEndedNotificationLv = null;
       _clearInMemoryUserAttributes();
     }
     widget.timelineStore?.setCapacity(
@@ -1021,6 +1032,7 @@ class _SelectScreenState extends State<SelectScreen>
   Future<void> _onDifferentLvConnected(String previousLv, String nextLv) {
     if (previousLv != nextLv) {
       widget.timelineStore?.clear();
+      _broadcastEndedNotificationLv = null;
       _currentBroadcasterId = null;
       _clearInMemoryUserAttributes();
     }

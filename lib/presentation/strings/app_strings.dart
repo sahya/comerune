@@ -561,6 +561,16 @@ final class TimeshiftStrings {
 
   /// 未対応ダイアログの確認ボタン。
   String get unsupportedDialogConfirm => 'OK';
+
+  /// 終了番組を開き、タイムシフトのコメントを取得できたときのスナックバー。
+  ///
+  /// Issue #1071: ライブ視聴中に放送が終わったときの「放送が終了しました」
+  /// と区別する。すでに終わった番組を開いたので、いま終わったようには
+  /// 読めない文言にする。
+  String get commentsShownSnackbar => 'タイムシフトのコメントを表示しています';
+
+  /// [commentsShownSnackbar] の、取得済みのコメントの統計を開くボタン。
+  String get commentsShownStatsAction => '統計を見る';
 }
 
 /// `UserDetailSheet`（ユーザー詳細シート）で使用する文字列の集約。
