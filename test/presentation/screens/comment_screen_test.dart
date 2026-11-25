@@ -5148,6 +5148,10 @@ void main() {
         expect(supervisor.endBroadcast(), isTrue);
         await tester.pump();
 
+        // As in the app, the fetch finishes first and the fetched comments
+        // reach the screen with the parent's rebuild in the next frame.
+        controller.setStatus(TimeshiftFetchStatus.fetching);
+        controller.setStatus(TimeshiftFetchStatus.paused);
         await tester.pumpWidget(
           _buildScreen(
             supervisor: supervisor,
@@ -5155,7 +5159,7 @@ void main() {
             timeshiftFetchController: controller,
           ),
         );
-        await finishFetch(tester, controller);
+        await tester.pump();
 
         expect(
           find.byKey(const Key('timeshift-comments-shown-snackbar')),

@@ -708,6 +708,10 @@ class CommentScreen extends StatefulWidget {
   /// non-empty string the comment-post FAB is shown.
   final Future<String> Function()? userSessionLoader;
 
+  /// Fetches the comments of an ended program (timeshift). Drives the fetch
+  /// panel, and tells this screen when a fetch finishes so it can show the
+  /// "showing timeshift comments" SnackBar (Issue #1071). When `null`, both
+  /// are skipped.
   final TimeshiftFetchController? timeshiftFetchController;
 
   /// Optional repository used to end the user's own broadcast from the
