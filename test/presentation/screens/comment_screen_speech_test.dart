@@ -2041,11 +2041,25 @@ void main() {
         matching: find.byIcon(icon),
       );
 
-      for (final ({String label, void Function(ConnectionSupervisor) end}) c
-          in <({String label, void Function(ConnectionSupervisor) end})>[
+      for (final ({
+            String label,
+            void Function(ConnectionSupervisor) end,
+            int graceReleases,
+          })
+          c
+          in <
+            ({
+              String label,
+              void Function(ConnectionSupervisor) end,
+              int graceReleases,
+            })
+          >[
             (
               label: 'an ended program',
               end: (ConnectionSupervisor s) => expect(s.endBroadcast(), isTrue),
+              // Issue #1052: nothing is being read, so the FGS
+              // "読み上げ完了待ち..." wait is released at once.
+              graceReleases: 1,
             ),
             (
               label: 'a connection that fails before streaming',
@@ -2053,6 +2067,7 @@ void main() {
                 s.fail(ConnectionErrorCode.sessionWsConnectFailed),
                 isTrue,
               ),
+              graceReleases: 0,
             ),
           ]) {
         testWidgets('${c.label}: no VOICEVOX setup and no start', (
@@ -2068,12 +2083,14 @@ void main() {
           );
           final ConnectionSupervisor supervisor =
               _buildNeverStreamedSupervisor();
+          int graceEndedCount = 0;
 
           await tester.pumpWidget(
             _buildGraceHost(
               supervisor: supervisor,
               speechPlatform: fakePlatform,
               speechSettings: const SpeechSettings(enabled: true),
+              onSpeechGraceEnded: () => graceEndedCount++,
             ),
           );
           await tester.pump();
@@ -2087,6 +2104,7 @@ void main() {
           expect(fakePlatform.startCalled, isFalse);
           // Shown as stopped, not as "starting" or "on".
           expect(statusIcon(Icons.pause_circle_outline), findsOneWidget);
+          expect(graceEndedCount, c.graceReleases);
 
           await tester.pumpWidget(const SizedBox.shrink());
         });
