@@ -8,6 +8,9 @@ import 'package:comerune/comment_speech/comment_speech.dart';
 class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
   bool initializeCalled = false;
   bool startCalled = false;
+
+  /// Number of calls to [start].
+  int startCallCount = 0;
   bool stopCalled = false;
   bool releaseCalled = false;
   SpeechSettings? lastUpdatedSettings;
@@ -101,6 +104,7 @@ class FakeCommentSpeechPlatform implements CommentSpeechPlatform {
   @override
   Future<void> start() async {
     startCalled = true;
+    startCallCount += 1;
     if (startCompleter != null) {
       await startCompleter!.future;
     }
