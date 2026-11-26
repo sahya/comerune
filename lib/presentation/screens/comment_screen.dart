@@ -1080,6 +1080,18 @@ class _CommentScreenState extends State<CommentScreen>
   /// timestamp before this value are skipped, ensuring that only comments
   /// arriving after speech initialization are read aloud.
   DateTime? _speechBaselineTimestamp;
+
+  /// Issue #1070: when the current connection started, and the last message
+  /// shown at that moment. Speech waits for live reception before it starts;
+  /// it then reads from this point, so live comments that arrive while the
+  /// engine starts are not dropped and earlier comments are not read.
+  DateTime? _connectionStartedAt;
+  String? _lastMessageIdAtConnectionStart;
+
+  /// Issue #1070: [_isReceivingLive] at the previous connection change, so
+  /// the moment live reception starts can be told apart from a reconnect in
+  /// the middle of a live broadcast.
+  bool _wasReceivingLive = false;
   List<String> _effectivePresetNgWords = const <String>[];
 
   /// Structured preset categories loaded from the asset, when available.
@@ -1276,14 +1288,23 @@ class _CommentScreenState extends State<CommentScreen>
           '[CommentScreen] initState: speech.enabled=${widget.speechConfig.speechSettings.enabled}, '
           'platform=${widget.speechConfig.speechPlatform != null ? "ok" : "null"}',
     );
+    _recordConnectionStart();
+    _wasReceivingLive = _isReceivingLive;
     if (widget.speechConfig.speechSettings.enabled &&
         widget.speechConfig.speechPlatform != null) {
-      _debugLog('[CommentScreen] initState: scheduling speech init');
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          unawaited(_initializeAndStartSpeech());
-        }
-      });
+      if (_isReceivingLive) {
+        _debugLog('[CommentScreen] initState: scheduling speech init');
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            unawaited(_initializeAndStartSpeech());
+          }
+        });
+      } else {
+        // Issue #1070: an ended program has nothing to read, so speech is
+        // prepared only once live reception starts (see
+        // [_startSpeechOnLiveReception]).
+        _debugLog('[CommentScreen] initState: speech waits for live');
+      }
     }
 
     // Issue #694 cycle-2-new review: clear a stale local ERROR state when
@@ -1363,6 +1384,7 @@ class _CommentScreenState extends State<CommentScreen>
       oldWidget.connectionSupervisor.removeListener(_handleConnectionChanged);
       widget.connectionSupervisor.addListener(_handleConnectionChanged);
       _lastStatus = widget.connectionSupervisor.status;
+      _wasReceivingLive = _isReceivingLive;
       // Issue #670 round-1 review (変化) note: we intentionally do NOT
       // re-seed the shared tail cursor on a supervisor swap. In production
       // the supervisor is created once at app start and never replaced,
@@ -1887,7 +1909,15 @@ class _CommentScreenState extends State<CommentScreen>
     unawaited(_initializeAndStartSpeech());
   }
 
-  Future<void> _initializeAndStartSpeech() async {
+  /// Prepares and starts speech.
+  ///
+  /// [fromConnectionStart] (Issue #1070): the start was held until live
+  /// reception began, so speech reads from the moment the connection
+  /// started instead of from now. Not when the VOICEVOX setup dialog was
+  /// shown: comments that arrived during the setup are skipped, as before.
+  Future<void> _initializeAndStartSpeech({
+    bool fromConnectionStart = false,
+  }) async {
     _debugLogLazy(
       () =>
           '[CommentScreen] initSpeech: enter '
@@ -1906,6 +1936,7 @@ class _CommentScreenState extends State<CommentScreen>
     final bool isAndroidTts =
         widget.speechConfig.speechSettings.engineType ==
         SpeechEngineType.androidTts;
+    bool shownSetupDialog = false;
 
     // Check if engine is already ready from a previous session.
     // We also surface a previously-stuck ERROR (e.g. VOICEVOX setup was
@@ -1981,6 +2012,7 @@ class _CommentScreenState extends State<CommentScreen>
         _speechInitializing = false;
         return;
       }
+      shownSetupDialog = true;
       final bool success = await VoicevoxSetupDialog.show(context, platform);
       _debugLogLazy(
         () => '[CommentScreen] initSpeech: SetupDialog result=$success',
@@ -2069,9 +2101,17 @@ class _CommentScreenState extends State<CommentScreen>
 
       // Record baseline BEFORE awaiting engine start so that comments
       // arriving during initialization are not accidentally skipped.
-      _speechBaselineTimestamp = DateTime.now();
-      if (widget.messages.isNotEmpty) {
-        _lastSpeechMessageId = widget.messages.last.id;
+      final DateTime? connectionStartedAt = _connectionStartedAt;
+      if (fromConnectionStart &&
+          !shownSetupDialog &&
+          connectionStartedAt != null) {
+        _speechBaselineTimestamp = connectionStartedAt;
+        _lastSpeechMessageId = _lastMessageIdAtConnectionStart;
+      } else {
+        _speechBaselineTimestamp = DateTime.now();
+        if (widget.messages.isNotEmpty) {
+          _lastSpeechMessageId = widget.messages.last.id;
+        }
       }
 
       _debugLog('[CommentScreen] initSpeech: updateSettings → start()...');
@@ -2172,7 +2212,7 @@ class _CommentScreenState extends State<CommentScreen>
       // truth so that any race / stale state from the previous engine
       // does not leak into the new engine.
       await _reconcileSpeechStartedFromNative(reason: 'engine_switched');
-      if (newSettings.enabled) {
+      if (newSettings.enabled && _isReceivingLive) {
         await _initializeAndStartSpeech();
       }
       return;
@@ -2180,7 +2220,11 @@ class _CommentScreenState extends State<CommentScreen>
 
     if (!oldSettings.enabled && newSettings.enabled) {
       _debugLog('[CommentScreen] settingsChanged: → enabling speech');
-      await _initializeAndStartSpeech();
+      // Issue #1070: while an ended program is shown there is nothing to
+      // read; speech starts when live reception starts.
+      if (_isReceivingLive) {
+        await _initializeAndStartSpeech();
+      }
     } else if (oldSettings.enabled && !newSettings.enabled) {
       _debugLog('[CommentScreen] settingsChanged: → disabling speech');
       // Issue #739: an explicit user-driven "disable speech" must override
@@ -3478,7 +3522,11 @@ class _CommentScreenState extends State<CommentScreen>
                           key: const Key('speech-status-icon'),
                           engineState: _speechEngineState,
                           isStarted: _speechStarted,
-                          isInitialized: _isInitializedForCurrentEngine,
+                          // Issue #1070: speech waiting for live reception
+                          // is stopped, not initializing.
+                          isInitialized:
+                              _isInitializedForCurrentEngine ||
+                              (!_speechInitializing && !_isReceivingLive),
                           isMuted: widget.speechConfig.isSpeechMuted,
                           themeColors: themeColors,
                           onTap: widget.callbacks.onSpeechMuteToggled,
@@ -4365,6 +4413,12 @@ class _CommentScreenState extends State<CommentScreen>
         );
       });
     }
+
+    if (_lastStatus != ConnectionStatus.connectingSessionWs &&
+        currentStatus == ConnectionStatus.connectingSessionWs) {
+      _recordConnectionStart();
+    }
+    _startSpeechOnLiveReception();
 
     _lastStatus = currentStatus;
 
@@ -5321,6 +5375,57 @@ class _CommentScreenState extends State<CommentScreen>
   bool _isOpenedEndedProgram(ConnectionStatus status) {
     return status == ConnectionStatus.ended &&
         !widget.connectionSupervisor.hasStreamedSinceConnectionStart;
+  }
+
+  /// Issue #1070: whether this connection is receiving live comments
+  /// (including a reconnect in the middle of a live broadcast). Speech is
+  /// prepared and started only then; an ended program has nothing to read.
+  bool get _isReceivingLive {
+    switch (widget.connectionSupervisor.status) {
+      case ConnectionStatus.streamingNdgr:
+      case ConnectionStatus.streamingLegacy:
+        return true;
+      case ConnectionStatus.reconnecting:
+        return widget.connectionSupervisor.hasStreamedSinceConnectionStart;
+      case ConnectionStatus.idle:
+      case ConnectionStatus.connectingSessionWs:
+      case ConnectionStatus.resolvingEndpoints:
+      case ConnectionStatus.stopped:
+      case ConnectionStatus.ended:
+      case ConnectionStatus.failed:
+        return false;
+    }
+  }
+
+  void _recordConnectionStart() {
+    _connectionStartedAt = DateTime.now();
+    _lastMessageIdAtConnectionStart = widget.messages.isNotEmpty
+        ? widget.messages.last.id
+        : null;
+  }
+
+  /// Issue #1070: starts speech when live reception starts on a connection
+  /// (for example after opening an ended program and then switching to a
+  /// live one). A reconnect during a live broadcast keeps speech running and
+  /// does not start it again. After a failed setup this waits for the user's
+  /// retry from the AppBar icon, so the setup is not offered on every
+  /// connection.
+  void _startSpeechOnLiveReception() {
+    final bool wasReceivingLive = _wasReceivingLive;
+    final bool isReceivingLive = _isReceivingLive;
+    _wasReceivingLive = isReceivingLive;
+    final bool liveReceptionStarted = !wasReceivingLive && isReceivingLive;
+    if (!liveReceptionStarted ||
+        _isStoppingForExit ||
+        _speechStarted ||
+        _speechInitializing ||
+        _speechEngineState == SpeechEngineState.error ||
+        !widget.speechConfig.speechSettings.enabled ||
+        widget.speechConfig.speechPlatform == null) {
+      return;
+    }
+    _debugLog('[CommentScreen] live reception started: starting speech');
+    unawaited(_initializeAndStartSpeech(fromConnectionStart: true));
   }
 
   bool _isStatsTrigger(ConnectionStatus status) {

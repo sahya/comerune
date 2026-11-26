@@ -1748,10 +1748,14 @@ void main() {
     // `ended` without ever streaming. With nothing left to read, the grace
     // window (and the FGS "読み上げ完了待ち..." notification it keeps
     // alive) must end at once instead of lingering for 30 s.
+    //
+    // Issue #1070: speech starts only once live reception starts, so it is
+    // running on such a connection only when an earlier live connection
+    // started it — here, a reconnect after the live broadcast ended.
     testWidgets(
       'never-streamed ended broadcast with an idle queue ends grace at once',
       (WidgetTester tester) async {
-        final ConnectionSupervisor supervisor = _buildNeverStreamedSupervisor();
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
         int graceEndedCount = 0;
 
         await tester.pumpWidget(
@@ -1763,6 +1767,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await _reconnectAfterLiveEnd(tester, supervisor);
         expect(fakePlatform.startCalled, isTrue);
         fakePlatform.stopCalled = false;
 
@@ -1847,8 +1852,7 @@ void main() {
       testWidgets(
         'never-streamed ended broadcast keeps grace with ${leftover.label}',
         (WidgetTester tester) async {
-          final ConnectionSupervisor supervisor =
-              _buildNeverStreamedSupervisor();
+          final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
           int graceEndedCount = 0;
 
           await tester.pumpWidget(
@@ -1860,6 +1864,7 @@ void main() {
             ),
           );
           await tester.pumpAndSettle();
+          await _reconnectAfterLiveEnd(tester, supervisor);
           fakePlatform.stopCalled = false;
           fakePlatform.statusToReturn = leftover.status;
 
@@ -1888,7 +1893,7 @@ void main() {
       'never-streamed ended broadcast keeps grace when the queue state '
       'cannot be read',
       (WidgetTester tester) async {
-        final ConnectionSupervisor supervisor = _buildNeverStreamedSupervisor();
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
         int graceEndedCount = 0;
 
         await tester.pumpWidget(
@@ -1900,6 +1905,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await _reconnectAfterLiveEnd(tester, supervisor);
         fakePlatform.stopCalled = false;
         // Fail only the queue check, not the engine check done at start-up.
         fakePlatform.getStatusError = Exception('platform channel failure');
@@ -1925,7 +1931,7 @@ void main() {
     testWidgets(
       'idle-queue answer that arrives after a reconnect does not stop speech',
       (WidgetTester tester) async {
-        final ConnectionSupervisor supervisor = _buildNeverStreamedSupervisor();
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
         int graceEndedCount = 0;
 
         await tester.pumpWidget(
@@ -1937,6 +1943,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await _reconnectAfterLiveEnd(tester, supervisor);
         fakePlatform.stopCalled = false;
 
         // The user taps reconnect before the queue check answers.
@@ -2025,6 +2032,264 @@ void main() {
         await tester.pumpWidget(const SizedBox.shrink());
       },
     );
+
+    // Issue #1070: an ended program has nothing to read, so speech is not
+    // prepared or started until live reception starts.
+    group('speech waits for live reception (Issue #1070)', () {
+      Finder statusIcon(IconData icon) => find.descendant(
+        of: find.byKey(const Key('speech-status-icon')),
+        matching: find.byIcon(icon),
+      );
+
+      for (final ({String label, void Function(ConnectionSupervisor) end}) c
+          in <({String label, void Function(ConnectionSupervisor) end})>[
+            (
+              label: 'an ended program',
+              end: (ConnectionSupervisor s) => expect(s.endBroadcast(), isTrue),
+            ),
+            (
+              label: 'a connection that fails before streaming',
+              end: (ConnectionSupervisor s) => expect(
+                s.fail(ConnectionErrorCode.sessionWsConnectFailed),
+                isTrue,
+              ),
+            ),
+          ]) {
+        testWidgets('${c.label}: no VOICEVOX setup and no start', (
+          WidgetTester tester,
+        ) async {
+          // Not ready, so preparing speech would open the setup dialog.
+          fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+            enabled: true,
+            engineState: 'UNINITIALIZED',
+            playerState: 'IDLE',
+            queueSize: 0,
+            currentSpeakerId: 0,
+          );
+          final ConnectionSupervisor supervisor =
+              _buildNeverStreamedSupervisor();
+
+          await tester.pumpWidget(
+            _buildGraceHost(
+              supervisor: supervisor,
+              speechPlatform: fakePlatform,
+              speechSettings: const SpeechSettings(enabled: true),
+            ),
+          );
+          await tester.pump();
+          c.end(supervisor);
+          await tester.pump();
+          await tester.pump();
+
+          expect(find.byType(Dialog), findsNothing);
+          expect(fakePlatform.getStatusCallCount, 0);
+          expect(fakePlatform.initializeCalled, isFalse);
+          expect(fakePlatform.startCalled, isFalse);
+          // Shown as stopped, not as "starting" or "on".
+          expect(statusIcon(Icons.pause_circle_outline), findsOneWidget);
+
+          await tester.pumpWidget(const SizedBox.shrink());
+        });
+      }
+
+      testWidgets('starts once when live reception starts, and keeps running '
+          'across a reconnect', (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildNeverStreamedSupervisor();
+
+        await tester.pumpWidget(
+          _buildGraceHost(
+            supervisor: supervisor,
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+          ),
+        );
+        await tester.pump();
+        expect(fakePlatform.startCalled, isFalse);
+
+        expect(supervisor.onSessionWsConnected(), isTrue);
+        expect(supervisor.onNdgrEndpointResolved(), isTrue);
+        await tester.pump();
+        await tester.pump();
+        expect(fakePlatform.startCallCount, 1);
+        expect(statusIcon(Icons.volume_up), findsOneWidget);
+
+        expect(
+          supervisor.onStreamDisconnected(ConnectionErrorCode.ndgrStreamFailed),
+          isTrue,
+        );
+        await tester.pump();
+        expect(supervisor.reconnectToNdgrStream(), isTrue);
+        await tester.pump();
+        await tester.pump();
+
+        expect(fakePlatform.startCallCount, 1);
+        expect(fakePlatform.stopCalled, isFalse);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+      });
+
+      testWidgets('starts when a connection that dropped before streaming '
+          'reaches streaming through a reconnect', (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildNeverStreamedSupervisor();
+
+        await tester.pumpWidget(
+          _buildGraceHost(
+            supervisor: supervisor,
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+          ),
+        );
+        await tester.pump();
+        expect(
+          supervisor.onStreamDisconnected(
+            ConnectionErrorCode.sessionWsConnectFailed,
+          ),
+          isTrue,
+        );
+        await tester.pump();
+        expect(fakePlatform.startCalled, isFalse);
+
+        expect(supervisor.reconnectToNdgrStream(), isTrue);
+        await tester.pump();
+        await tester.pump();
+
+        expect(fakePlatform.startCallCount, 1);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+      });
+
+      testWidgets('a cancelled VOICEVOX setup is not offered again on the '
+          'next live connection', (WidgetTester tester) async {
+        fakePlatform.statusToReturn = const SpeechRuntimeStatus(
+          enabled: true,
+          engineState: 'UNINITIALIZED',
+          playerState: 'IDLE',
+          queueSize: 0,
+          currentSpeakerId: 0,
+        );
+        // Makes the setup dialog show its close button.
+        fakePlatform.initializeError = Exception('simulated init failure');
+        final ConnectionSupervisor supervisor = _buildStreamingSupervisor();
+
+        await tester.pumpWidget(
+          _buildGraceHost(
+            supervisor: supervisor,
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('閉じる'));
+        await tester.pumpAndSettle();
+        expect(statusIcon(Icons.error_outline), findsOneWidget);
+
+        await _reconnectAfterLiveEnd(tester, supervisor);
+        expect(supervisor.onSessionWsConnected(), isTrue);
+        expect(supervisor.onNdgrEndpointResolved(), isTrue);
+        await tester.pumpAndSettle();
+
+        expect(find.text('閉じる'), findsNothing);
+        expect(fakePlatform.startCalled, isFalse);
+        // The user can still retry from the icon.
+        expect(statusIcon(Icons.error_outline), findsOneWidget);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+      });
+
+      testWidgets('reads live comments that arrive while the engine starts, '
+          'but not earlier ones', (WidgetTester tester) async {
+        final ConnectionSupervisor supervisor = _buildNeverStreamedSupervisor();
+        final DateTime now = DateTime.now();
+        AppMessage chat(String id, DateTime at) => AppMessage(
+          id: id,
+          timestamp: at,
+          userId: 'user-$id',
+          content: 'comment $id',
+          type: AppMessageType.chat,
+        );
+        final AppMessage past = chat(
+          'past',
+          now.subtract(const Duration(hours: 1)),
+        );
+        final AppMessage later = chat(
+          'later',
+          now.add(const Duration(minutes: 2)),
+        );
+        final Completer<void> startCompleter = Completer<void>();
+        fakePlatform.startCompleter = startCompleter;
+
+        Future<void> show(List<AppMessage> messages) => tester.pumpWidget(
+          _buildGraceHost(
+            supervisor: supervisor,
+            speechPlatform: fakePlatform,
+            speechSettings: const SpeechSettings(enabled: true),
+            messages: messages,
+          ),
+        );
+
+        await show(const <AppMessage>[]);
+        await tester.pump();
+        // Posted after the connection started but before speech started.
+        final AppMessage early = chat('early', DateTime.now());
+        expect(supervisor.onSessionWsConnected(), isTrue);
+        expect(supervisor.onNdgrEndpointResolved(), isTrue);
+        await tester.pump();
+        expect(fakePlatform.startCalled, isTrue);
+
+        // History and a live comment arrive while start() is pending.
+        await show(<AppMessage>[past, early]);
+        startCompleter.complete();
+        await tester.pump();
+        await tester.pump();
+        await show(<AppMessage>[past, early, later]);
+        await tester.pump();
+
+        expect(
+          fakePlatform.submittedComments.map((RawComment c) => c.id),
+          <String>['early', 'later'],
+        );
+
+        await tester.pumpWidget(const SizedBox.shrink());
+      });
+
+      testWidgets('turning speech on while an ended program is shown waits, '
+          'and a live program opened next starts it', (
+        WidgetTester tester,
+      ) async {
+        final ConnectionSupervisor supervisor = _buildNeverStreamedSupervisor();
+        Future<void> show({required bool enabled}) => tester.pumpWidget(
+          _buildGraceHost(
+            supervisor: supervisor,
+            speechPlatform: fakePlatform,
+            speechSettings: SpeechSettings(enabled: enabled),
+          ),
+        );
+
+        await show(enabled: false);
+        await tester.pump();
+        expect(supervisor.endBroadcast(), isTrue);
+        await tester.pump();
+
+        await show(enabled: true);
+        await tester.pump();
+        await tester.pump();
+        expect(fakePlatform.getStatusCallCount, 0);
+        expect(fakePlatform.startCalled, isFalse);
+
+        // The user opens a live program from the same screen.
+        expect(supervisor.retryConnectionFromTerminal(), isTrue);
+        await tester.pump();
+        expect(fakePlatform.startCalled, isFalse);
+        expect(supervisor.onSessionWsConnected(), isTrue);
+        expect(supervisor.onNdgrEndpointResolved(), isTrue);
+        await tester.pump();
+        await tester.pump();
+
+        expect(fakePlatform.startCallCount, 1);
+
+        await tester.pumpWidget(const SizedBox.shrink());
+      });
+    });
 
     testWidgets(
       'speech startup aborts if the broadcast ends while start is pending',
@@ -2479,6 +2744,41 @@ void main() {
         expect(fakePlatform.startCalled, isTrue);
       },
     );
+
+    // Issue #1070: the same wait for live reception applies to Android TTS.
+    testWidgets('an ended program does not prepare Android TTS; a live '
+        'program opened next does', (WidgetTester tester) async {
+      final ConnectionSupervisor supervisor = _buildNeverStreamedSupervisor();
+
+      await tester.pumpWidget(
+        _buildGraceHost(
+          supervisor: supervisor,
+          speechPlatform: fakePlatform,
+          speechSettings: const SpeechSettings(
+            enabled: true,
+            engineType: SpeechEngineType.androidTts,
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(supervisor.endBroadcast(), isTrue);
+      await tester.pump();
+      await tester.pump();
+
+      expect(fakePlatform.checkAndroidTtsAvailabilityCalled, isFalse);
+      expect(fakePlatform.startCalled, isFalse);
+
+      expect(supervisor.retryConnectionFromTerminal(), isTrue);
+      expect(supervisor.onSessionWsConnected(), isTrue);
+      expect(supervisor.onNdgrEndpointResolved(), isTrue);
+      await tester.pump();
+      await tester.pump();
+
+      expect(fakePlatform.checkAndroidTtsAvailabilityCalled, isTrue);
+      expect(fakePlatform.startCallCount, 1);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
   });
 
   group('mute toggle', () {
@@ -6499,6 +6799,20 @@ ConnectionSupervisor _buildStreamingSupervisor() {
   return supervisor;
 }
 
+/// Ends the live broadcast on [supervisor] and reconnects, as the reconnect
+/// button does. The new connection has not streamed, while speech started
+/// during the live connection is still running (Issue #1052 / #1070).
+Future<void> _reconnectAfterLiveEnd(
+  WidgetTester tester,
+  ConnectionSupervisor supervisor,
+) async {
+  expect(supervisor.endBroadcast(), isTrue);
+  await tester.pump();
+  expect(supervisor.retryConnectionFromTerminal(), isTrue);
+  await tester.pump();
+  expect(supervisor.hasStreamedSinceConnectionStart, isFalse);
+}
+
 /// A connection that has started but never reached a streaming state, as
 /// when opening a broadcast that had already ended (Issue #1052).
 ConnectionSupervisor _buildNeverStreamedSupervisor() {
@@ -6512,12 +6826,13 @@ Widget _buildGraceHost({
   required FakeCommentSpeechPlatform speechPlatform,
   required SpeechSettings speechSettings,
   VoidCallback? onSpeechGraceEnded,
+  List<AppMessage> messages = const <AppMessage>[],
 }) {
   return MaterialApp(
     home: CommentScreen(
       programInfo: const CommentProgramInfo(lv: 'lv123456789'),
       connectionSupervisor: supervisor,
-      messages: const <AppMessage>[],
+      messages: messages,
       callbacks: CommentCallbacks(
         onStopAllConnections: () async {},
         onReconnectSameLv: () async {},
