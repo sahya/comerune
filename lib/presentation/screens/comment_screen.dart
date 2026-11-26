@@ -1076,9 +1076,10 @@ class _CommentScreenState extends State<CommentScreen>
   /// retroactively replayed (Issue #670 round-1 review).
   bool _seedNextTailObservationSilently = false;
 
-  /// Timestamp recorded just before the speech engine starts. Messages with a
-  /// timestamp before this value are skipped, ensuring that only comments
-  /// arriving after speech initialization are read aloud.
+  /// Timestamp recorded just before the speech engine starts, or the time
+  /// the connection started when the start waited for live reception
+  /// (Issue #1070). Messages with a timestamp before this value are skipped,
+  /// so comments from before speech was turned on are not read aloud.
   DateTime? _speechBaselineTimestamp;
 
   /// Issue #1070: when the current connection started, and the last message
