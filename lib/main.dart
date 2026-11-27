@@ -1170,7 +1170,8 @@ class _SessionWsClientAdapter implements reconnect.SessionWsClient {
         client = _activeClient;
       } on Object catch (error) {
         appDebugLog(
-          '[SessionWsClientAdapter] postComment: WS connect failed: $error',
+          '[SessionWsClientAdapter] postComment: WS connect failed: '
+          '${session_impl.SessionWsLogSanitizer.sanitizeText('$error')}',
         );
       }
       if (client == null || client.isDisposed || !client.isConnected) {
