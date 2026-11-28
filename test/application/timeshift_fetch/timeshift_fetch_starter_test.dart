@@ -367,5 +367,16 @@ void main() {
         expect(h.lookups, isEmpty);
       },
     );
+
+    test('shows no unsupported notice when disabled and the connection was '
+        'streaming live (#1049)', () async {
+      final _Harness h = _Harness(enabled: false)..streamedLive = true;
+
+      await h.starter.onTimeshiftDetected(_programInfoViewUri);
+
+      expect(h.unsupportedDialogs, 0);
+      expect(h.fetched, isEmpty);
+      expect(h.lookups, isEmpty);
+    });
   });
 }

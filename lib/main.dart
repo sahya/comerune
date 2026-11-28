@@ -778,7 +778,7 @@ class _ComeruneAppState extends State<ComeruneApp> {
       return;
     }
     // Issue #1017: ライブで視聴していたら出さず、提示済みとしても記録しない
-    // （接続し直したときに 1 度だけ出すため）。
+    // （接続し直したときに、案内が必要なら 1 度だけ出せるようにするため）。
     if (_connectionSupervisor.hasStreamedSinceConnectionStart) {
       log('Skipped timeshift dialog (broadcast ended while live)', name: 'App');
       return;
