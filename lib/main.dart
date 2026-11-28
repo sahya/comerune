@@ -84,6 +84,18 @@ import 'extension/extension_scope.dart';
 /// 緊急停止用のスイッチとして残している。`false` に戻すと取得を行わず、
 /// 検出時に「未対応」ダイアログ（`AppStrings.timeshift.unsupported*`）を
 /// lv ごとに 1 度だけ提示する従来の挙動に戻る。
+///
+/// フラグや取得の流れを変えるときの確認事項（Issue #1049）:
+/// - ライブで視聴していた放送が再接続の途中で終わった場合は、フラグの値に
+///   かかわらず、取得もダイアログも行わない。ライブで受け取ったコメントが
+///   すでにタイムラインにあるので、取り直すと同じ放送のコメントを二重に
+///   取得することになる。
+/// - この判定は [TimeshiftFetchStarter.onTimeshiftDetected] の先頭にある。
+///   [ConnectionSupervisor.hasStreamedSinceConnectionStart]（今回の接続で
+///   一度でもライブとして受信したか）が `true` なら、何もせずに戻る。
+///   viewUri の取得中にライブの受信が始まった場合も、取得結果を捨てる。
+/// - 終わった放送を最初から開いた場合（今回の接続で一度もライブとして
+///   受信していない）は、従来どおり取得を始める。
 const bool kTimeshiftFetchEnabled = true;
 
 Future<void> main() async {
@@ -694,13 +706,11 @@ class _ComeruneAppState extends State<ComeruneApp> {
     unawaited(widget.oauthAuthController.attach());
   }
 
-  /// 「タイムシフト未対応」ダイアログを同一 lv あたり 1 度だけ提示する。
+  /// 「タイムシフト未対応」ダイアログを出す。
   ///
   /// [kTimeshiftFetchEnabled] を `false`（緊急停止）にしたときだけ使う。
-  /// Navigator が未マウント等でダイアログを出せない場合は副作用なく
-  /// 抜ける（`AGENTS.md` の
-  /// 「Optional Reference Two-Stage Fallback」方針に準じ、内部構造を
-  /// 露出しないログだけ残す）。
+  /// 今回の接続でライブとして視聴していた場合は出さない、同じ lv では
+  /// 1 度だけ、などの条件は [_showTimeshiftDialogIfNeeded] を参照。
   void _showTimeshiftUnsupportedDialogIfNeeded() {
     _showTimeshiftDialogIfNeeded(
       dialogKey: const Key('timeshift-unsupported-dialog'),
@@ -712,7 +722,9 @@ class _ComeruneAppState extends State<ComeruneApp> {
   }
 
   /// Issue #654: 終了放送の viewUri を取得できなかったときの案内を、
-  /// 理由に応じた本文で同一 lv あたり 1 度だけ提示する。
+  /// 理由に応じた本文で出す。
+  ///
+  /// 出す条件と出さない条件は [_showTimeshiftDialogIfNeeded] を参照。
   void _showTimeshiftUnavailableDialogIfNeeded(
     TimeshiftViewUriFailure? failure,
   ) {
@@ -732,6 +744,28 @@ class _ComeruneAppState extends State<ComeruneApp> {
     );
   }
 
+  /// タイムシフトの案内ダイアログを出す共通の本体。
+  /// [_showTimeshiftUnsupportedDialogIfNeeded] と
+  /// [_showTimeshiftUnavailableDialogIfNeeded] から呼ばれる。
+  ///
+  /// 次の場合は出さない:
+  /// - 番組を開いていない（`_currentLv` が空）。
+  /// - 今回の接続でライブとして視聴していた
+  ///   （[ConnectionSupervisor.hasStreamedSinceConnectionStart] が `true`）。
+  ///   ライブで見ていた放送が再接続の途中で終わっただけなので、タイムシフトの
+  ///   案内ではなく放送終了の表示（`ConnectionStatus.ended`）だけを見せる
+  ///   （Issue #1017）。このとき lv を「提示済み」として記録しない。そのため、
+  ///   ユーザーが接続し直した（＝終わった放送を開き直した）ときに案内が
+  ///   必要なら、そのときに 1 度だけ出る。
+  ///   通常は [TimeshiftFetchStarter] が同じ条件で先に止めるが、呼び出し元に
+  ///   よらず守られるよう、ここでも確かめる。
+  /// - 同じ lv ですでに出した。「未対応」と「取得できません」のどちらを
+  ///   出したかは区別しない。別の lv に切り替えると記録は消える。
+  /// - Navigator がまだ使えない。このときは lv を「提示済み」として記録した
+  ///   うえで、内部構造を露出しないログだけ残して抜ける（`AGENTS.md` の
+  ///   「Optional Reference Two-Stage Fallback」方針）。
+  ///
+  /// どれにも当たらなければ、lv を「提示済み」として記録してダイアログを出す。
   void _showTimeshiftDialogIfNeeded({
     required Key dialogKey,
     required Key confirmKey,
@@ -743,10 +777,8 @@ class _ComeruneAppState extends State<ComeruneApp> {
     if (lv.isEmpty) {
       return;
     }
-    // Issue #1017: ライブで視聴していた放送が再接続の途中で終わっただけの
-    // 場合は、タイムシフトの案内ではなく放送終了の表示（ConnectionStatus.ended）
-    // だけを見せる。提示済みとしては記録しないので、終了後にユーザが接続し
-    // 直した（＝終わった放送を開いた）ときは従来どおり 1 度だけ案内する。
+    // Issue #1017: ライブで視聴していたら出さず、提示済みとしても記録しない
+    // （接続し直したときに、案内が必要なら 1 度だけ出せるようにするため）。
     if (_connectionSupervisor.hasStreamedSinceConnectionStart) {
       log('Skipped timeshift dialog (broadcast ended while live)', name: 'App');
       return;
